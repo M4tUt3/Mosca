@@ -1,5 +1,5 @@
 // MOSCA — service worker: deja la app disponible sin señal
-const CACHE = 'mosca-v8';
+const CACHE = 'mosca-v9';
 const ARCHIVOS = ['./', './index.html', './balistica.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

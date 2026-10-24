@@ -94,6 +94,13 @@ body.noche .diana{background:#1a0000}
 .opcion{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0;font:inherit}
 .opcion.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 .opcion small{display:block;color:var(--tx2);margin-top:3px}
+details.ayuda{margin:2px 0 4px}
+details.ayuda summary{font-size:12px;color:var(--acc);cursor:pointer;list-style:none}
+details.ayuda summary::-webkit-details-marker{display:none}
+details.ayuda div{font-size:13px;color:var(--tx2);background:var(--panel2);border-radius:9px;padding:9px 11px;margin-top:4px;line-height:1.45}
+details.ayuda b{color:var(--tx)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chips button{background:var(--panel);color:var(--tx);border:1px solid var(--acc);border-radius:99px;padding:4px 10px;font-size:12px}
 .sep{height:1px;background:var(--line);margin:14px 0}
 dialog{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:var(--r);max-width:92vw}
 dialog img{max-width:86vw;max-height:70vh}
@@ -121,7 +128,7 @@ dialog img{max-width:86vw;max-height:70vh}
 <script src="balistica.js"></script>
 <script>
 'use strict';
-const VERSION = '1.7';
+const VERSION = '1.8';
 /* ================= Preferencias y unidades ================= */
 const PREF_KEY = 'mosca.prefs';
 let PREFS = { vel:'fps' };
@@ -160,13 +167,13 @@ const ESQ = {
     ['nombre','Nombre (cómo la llamás)','text',1],
     ['marca','Marca','text'],['modelo','Modelo','text'],
     ['calibre','Calibre','text'],
-    ['canoPulg','Largo de caño (pulg)','number'],['paso','Paso de estría (ej. 1:10)','text'],
+    ['canoPulg','Largo de caño (pulg) — opcional','number'],['paso','Paso de estría (ej. 1:10) — opcional','text'],
     ['mira','Mira (marca y modelo)','text'],['objetivoMm','Objetivo de la mira (mm)','number'],
     ['alturaMiraCm','Altura de mira sobre el eje del caño (cm)','number'],
     ['unidadClick','Unidad de las torretas','select',0,['MOA','MRAD']],
     ['valorClick','Valor de cada click (ej. 0.25 MOA / 0.1 MRAD)','number'],
     ['ceroM','Distancia de cero (m)','number'],
-    ['disparosPrevios','Disparos hechos antes de usar la app','number'],
+    ['disparosPrevios','Disparos hechos antes de usar la app — opcional','number'],
     ['notas','Notas','textarea']
   ]},
   cargas: { titulo:'Cargas', singular:'carga', campos:[
@@ -210,6 +217,48 @@ const ESQ = {
     ['notas','Notas / observaciones','textarea']
   ]}
 };
+
+/* ================= Ayudas para cada dato ================= */
+// data-fill="campo=valor;campo2=valor2" carga valores típicos con un toque
+const AYUDA = {
+ 'armas.nombre': 'Como vos lo llames, por ejemplo "Rem 700 .308" o "el de papá".',
+ 'armas.marca': 'Está grabada en el cajón (la parte de metal donde va el cerrojo) o en el caño.',
+ 'armas.modelo': 'También grabado en el cajón o el caño, o en la caja y los papeles del arma. Ejemplos: "700 SPS", "B14 Hunter", "Tikka T3x".',
+ 'armas.calibre': 'Está grabado en el caño, cerca del cajón. Ejemplos: ".308 Win", "30-06 Spr", "7mm-08", ".270 Win", "6.5 Creedmoor". Tiene que coincidir con lo que dice la caja de balas.',
+ 'armas.canoPulg': '<b>No hace falta para ningún cálculo:</b> es solo un dato. Si lo querés: buscá tu modelo en la web del fabricante (ej. Remington 700 SPS .308 = 24"). Para medirlo, con el arma descargada y el cerrojo cerrado, meté una varilla por la boca hasta que toque el cerrojo, marcala a ras de la boca y medila. Pasá cm a pulgadas dividiendo por 2,54.',
+ 'armas.paso': '<b>No hace falta para los cálculos.</b> A veces está grabado en el caño ("1:10", "1-10"); si no, está en la ficha del fabricante. Para .308 lo más común es 1:10 o 1:12.',
+ 'armas.mira': 'Marca y modelo, escrito en el tubo de la mira. El número tipo <b>"3-9x40"</b> quiere decir: aumento de 3 a 9 veces y objetivo de 40 mm.',
+ 'armas.objetivoMm': 'Es el <b>último número</b> del modelo de la mira: en "3-9x40" es 40, en "2.5-15x56" es 56. También se puede medir el diámetro de la lente grande de adelante. Si cargaste el modelo arriba, lo completo solo.',
+ 'armas.alturaMiraCm': 'Es la distancia entre el centro del caño y el centro de la mira. <b>Cómo medirla:</b> mirando el arma de costado, medí con una regla desde el centro del cerrojo hasta el centro del tubo de la mira (en la parte del ocular). Lo normal en un fusil de caza es entre 3,5 y 5 cm. <b>Si no sabés, usá 4 cm:</b> a distancias de caza la diferencia es de 1 o 2 cm.<div class="chips"><button type="button" data-fill="alturaMiraCm=4">No sé, usar 4 cm</button></div>',
+ 'armas.unidadClick': 'Mirá la torreta de arriba de la mira (o adentro de su tapa). Si dice <b>"MOA"</b>, <b>"1/4 MOA"</b> o <b>"1/4 in @ 100 yds"</b>, es MOA. Si dice <b>"MRAD"</b>, <b>"MIL"</b> o <b>"1 cm @ 100 m"</b>, es MRAD. La mayoría de las miras de caza son MOA.<div class="chips"><button type="button" data-fill="unidadClick=MOA;valorClick=0.25">Dice 1/4 MOA</button><button type="button" data-fill="unidadClick=MOA;valorClick=0.125">Dice 1/8 MOA</button><button type="button" data-fill="unidadClick=MRAD;valorClick=0.1">Dice 0.1 MRAD / 1 cm</button></div>',
+ 'armas.valorClick': 'Cuánto mueve el impacto cada "click" que sentís al girar la torreta. Está escrito en la torreta: <b>1/4 MOA = 0.25</b>, 1/8 MOA = 0.125, 1/2 MOA = 0.5, <b>0.1 MRAD = 0.1</b>. Si no dice nada y la mira es de caza común, casi seguro es 1/4 MOA.<div class="chips"><button type="button" data-fill="unidadClick=MOA;valorClick=0.25">No sé, usar 1/4 MOA</button></div>',
+ 'armas.ceroM': 'La distancia a la que la bala pega justo donde apuntás. Si no sabés a qué distancia está centrada tu mira, dejalo vacío y usá el <b>asistente de cero</b>: te lleva paso a paso y lo completa solo.',
+ 'armas.disparosPrevios': 'Cuántos tiros calculás que ya hizo el arma antes de usar la app. Sirve para seguir el desgaste del caño. Si no sabés, dejalo vacío o poné una estimación.',
+ 'cargas.puntaPesoGr': 'Está en la caja de la munición, en <b>grains</b> (gr). Ejemplos: 150 gr, 165 gr, 180 gr. Ojo: grains no son gramos.',
+ 'cargas.bc': 'El "coeficiente balístico": qué tan bien corta el aire la punta. Está en la caja o en la web del fabricante de la munición o de la punta (ej. Hornady 165 gr SP InterLock = 0.435 G1). Se usa para calcular la caída. Si no lo encontrás, un valor típico de caza en .308 es 0.40.<div class="chips"><button type="button" data-fill="bc=0.40;modeloBC=G1">No sé, usar 0.40 (G1)</button></div>',
+ 'cargas.modeloBC': 'Si el fabricante dice "G7", elegí G7; en cualquier otro caso, G1 (es el más común).',
+ 'cargas.v0': 'La velocidad de la bala al salir del caño. Lo mejor es medirla con un cronógrafo. Si no tenés, usá la que dice la caja (fps): está medida en caño de 24", así que si tu caño es más corto restá unos 25 fps por pulgada de menos.',
+ 'cargas.coalMm': 'Solo para recarga: el largo total del cartucho armado, de la base a la punta, medido con calibre.',
+ 'cargas.cbtoMm': 'Solo para recarga: largo de la base a la ojiva, medido con un comparador que se pone en el calibre.',
+ 'cargas.cargaGr': 'Solo para recarga: la carga de pólvora en grains. <b>Siempre sacala de un manual del fabricante</b>, empezando por la mínima.',
+ 'sesiones.distanciaM': 'A qué distancia estaba el blanco. Si no la sabés exacta, un telémetro o Google Maps (medir distancia) sirven.',
+ 'sesiones.gruposMm': 'El tamaño de cada grupo: la distancia en mm entre los centros de los dos agujeros más separados. Más fácil: marcá los tiros en la <b>diana</b> de la sesión y tocá «Pasar a Grupos».',
+ 'sesiones.velocidades': 'Solo si tenés cronógrafo: una velocidad por tiro, separadas por coma.',
+ 'sesiones.presionHPa': 'La presión del lugar donde tirás, no la "corregida al nivel del mar" del pronóstico. Si no la sabés, dejala vacía: la calculadora la estima por la altitud.',
+ 'sesiones.vientoDir': 'Imaginá un reloj con el blanco a las 12. Viento que viene de la derecha = 3; de la izquierda = 9; de frente = 12; de atrás = 6.',
+ 'sesiones.correccion': 'Si giraste las torretas en la sesión, anotá cuántos clicks y para dónde (ej. "4 arriba, 2 izquierda").'
+};
+function htmlAyuda(store, k){
+  const t = AYUDA[store+'.'+k]; if(!t) return '';
+  return `<details class="ayuda"><summary>¿Cómo lo sé?</summary><div>${t}</div></details>`;
+}
+// conecta los botones "No sé…" para que completen los campos del formulario
+function engancharAyudas(prefijo){
+  app.querySelectorAll('[data-fill]').forEach(b => b.onclick = () => {
+    b.dataset.fill.split(';').forEach(par => { const [k,v] = par.split('='); const el = $('#'+prefijo+k); if(el){ el.value = v; el.dispatchEvent(new Event('change')); } });
+    toast('Listo'); b.closest('details') && b.closest('details').removeAttribute('open');
+  });
+}
 
 /* ================= Utilidades ================= */
 const $ = s => document.querySelector(s);
@@ -289,7 +338,7 @@ async function formulario(store, id, preset){
   let html = `<h2>${id?'Editar':'Nueva'} ${e.singular}</h2><form id="frm">`;
   for(const [k,lab,tipo,req,opts] of e.campos){
     const v = CAMPOS_VEL.includes(k) ? velTexto(k, it[k]) : (it[k]??'');
-    html += `<label for="f_${k}">${esc(etiqueta(lab))}${req?' *':''}</label>`;
+    html += `<label for="f_${k}">${esc(etiqueta(lab))}${req?' *':''}</label>${htmlAyuda(store,k)}`;
     if(tipo==='textarea') html += `<textarea id="f_${k}" name="${k}">${esc(v)}</textarea>`;
     else if(tipo==='select') html += `<select id="f_${k}" name="${k}"><option value=""></option>${opts.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select>`;
     else if(tipo.startsWith('ref:')){
@@ -300,6 +349,12 @@ async function formulario(store, id, preset){
   html += `<div class="acts"><button type="button" class="btn sec" id="cancelar">Cancelar</button><button class="btn">Guardar</button></div></form>`;
   app.innerHTML = html;
   $('#cancelar').onclick = () => id ? detalle(store,id) : ir(vista);
+  engancharAyudas('f_');
+  // si escribe el modelo de la mira (ej. 3-9x40), completo el objetivo solo
+  if($('#f_mira') && $('#f_objetivoMm')) $('#f_mira').addEventListener('input', ev => {
+    const m = ev.target.value.match(/x\s*(\d{2,3})\b/i);
+    if(m && !$('#f_objetivoMm').value) $('#f_objetivoMm').value = m[1];
+  });
   $('#frm').onsubmit = async ev => {
     ev.preventDefault();
     const fd = new FormData(ev.target);
@@ -530,10 +585,10 @@ async function paso1(){
       <option value="MRAD|0.1"${a.unidadClick==='MRAD' && (a.valorClick||0.1)==0.1?' selected':''}>"0.1 MRAD" o "1 cm @ 100 m"</option>
       <option value="MRAD|0.05"${a.unidadClick==='MRAD' && a.valorClick==0.05?' selected':''}>"0.05 MRAD"</option>
     </select>
-    <p class="nota">Está escrito en la tapa de la torreta o en la torreta misma. Cada "click" que sentís al girar mueve el impacto esa cantidad.</p>
+    <details class="ayuda"><summary>¿Dónde lo veo?</summary><div>Sacá la tapita de la torreta de arriba de la mira: adentro, o en la torreta misma, dice algo como <b>"1/4 MOA"</b>, <b>"1 click = 1/4 in @ 100 yds"</b> o <b>"0.1 MRAD"</b>. Cada "click" que sentís al girar mueve el impacto esa cantidad. <b>Si no dice nada</b> y es una mira de caza común, casi seguro es 1/4 MOA: dejá la primera opción.</div></details>
     <label for="czAltura">Altura de la mira sobre el caño (cm)</label>
     <input id="czAltura" inputmode="decimal" value="${esc(a.alturaMiraCm||4)}">
-    <p class="nota">Del centro del caño al centro de la mira. Si no sabés, dejá 4 cm: alcanza para cazar.</p>
+    <details class="ayuda"><summary>¿Cómo la mido?</summary><div>Mirando el arma de costado, medí con una regla desde el centro del cerrojo hasta el centro del tubo de la mira (en la parte de atrás, donde ponés el ojo). Lo normal es entre 3,5 y 5 cm. <b>Si no sabés, dejá 4 cm:</b> a distancias de caza la diferencia es de 1 o 2 cm.</div></details>
     <div class="acts"><button class="btn" id="czSig">Siguiente</button></div>
   </div>`;
   $('#czArma').onchange = ev => { $('#czNuevaArma').style.display = ev.target.value ? 'none' : ''; CZ.armaId = ev.target.value; paso1(); };

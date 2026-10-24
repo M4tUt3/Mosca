@@ -10,6 +10,7 @@ App web gratuita y libre para tiradores, cazadores y recargadores. Funciona **si
 - **Fundición:** lotes de puntas fundidas con aleación, peso, dureza y recubrimiento.
 - **Calculadora balística:** modelo de punto-masa con tablas de arrastre G1 y G7, corrección atmosférica, viento y ángulo de tiro. Da caída, corrección en MOA o MRAD, clicks, deriva, velocidad, energía y tiempo de vuelo.
 - **Exportar / importar** en JSON, para hacer copias de seguridad, pasar los datos a otro teléfono o analizarlos con una IA.
+- **Asistente de cero:** guía paso a paso para centrar una mira nueva, pensado para cazadores que no son tiradores de banco: datos de la mira explicados, lista de preparación, elección del cero con su tabla de caída, etapa a 25 m y rondas de 3 tiros con la cantidad exacta de clicks y hacia dónde girar.
 - **Diana interactiva** en cada sesión: marcás los impactos con el dedo y calcula el tamaño del grupo, el impacto medio y los clicks para corregir.
 - **Consultas a la IA** con todos tus datos: Gemini (gratis), Claude o ChatGPT con tu propia clave, o abriendo la consulta en otra app. Las respuestas quedan guardadas en un historial, unidas a la sesión de tiro.
 - **Sin señal** la app cambia de color y sigue funcionando; lo de IA espera a que vuelva la conexión.

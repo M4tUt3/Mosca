@@ -81,6 +81,19 @@ body.noche .diana{background:#1a0000}
 .consulta .q{font-weight:600}
 .consulta .meta{font-size:12px;color:var(--tx2);margin-top:4px}
 .cargando{color:var(--acc);font-size:14px;margin-top:10px}
+.pasos{display:flex;gap:4px;margin:4px 0 12px}
+.pasos span{flex:1;height:4px;border-radius:2px;background:var(--line)}
+.pasos span.on{background:var(--acc)}
+.check{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+.check input{width:auto;margin-top:3px}
+.check b{display:block}
+.check small{color:var(--tx2)}
+.orden{font-size:20px;font-weight:700;line-height:1.35;margin:6px 0}
+.orden em{font-style:normal;color:var(--acc)}
+.ok-big{font-size:22px;font-weight:700;color:var(--acc2)}
+.opcion{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0;font:inherit}
+.opcion.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.opcion small{display:block;color:var(--tx2);margin-top:3px}
 .sep{height:1px;background:var(--line);margin:14px 0}
 dialog{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:var(--r);max-width:92vw}
 dialog img{max-width:86vw;max-height:70vh}
@@ -108,7 +121,7 @@ dialog img{max-width:86vw;max-height:70vh}
 <script src="balistica.js"></script>
 <script>
 'use strict';
-const VERSION = '1.6';
+const VERSION = '1.7';
 /* ================= Preferencias y unidades ================= */
 const PREF_KEY = 'mosca.prefs';
 let PREFS = { vel:'fps' };
@@ -262,6 +275,7 @@ async function listado(store){
   app.innerHTML = html;
   $('#nuevo').onclick = () => formulario(store);
   if($('#volver')) $('#volver').onclick = () => ir('mas');
+  if(store==='armas'){ app.insertAdjacentHTML('beforeend', `<button class="btn sec full" id="ceroLista" style="margin-top:6px">🎯 Calibrar una mira (asistente)</button>`); $('#ceroLista').onclick = () => vistaCero(); }
   app.querySelectorAll('.card.click').forEach(c=>c.onclick=()=>detalle(store,c.dataset.id));
 }
 
@@ -317,6 +331,7 @@ async function detalle(store, id){
     const n = await conteoArma(it);
     const ses = (await todos('sesiones')).filter(s=>s.armaId===id);
     html += `<div class="stats"><div class="stat"><b>${n}</b><i>disparos</i></div><div class="stat"><b>${ses.length}</b><i>sesiones</i></div></div>`;
+    html += `<div class="acts"><button class="btn full" id="irCero">🎯 Calibrar la mira (asistente paso a paso)</button></div>`;
   }
   if(store==='cargas'){
     const ses = (await todos('sesiones')).filter(s=>s.cargaId===id);
@@ -348,6 +363,7 @@ async function detalle(store, id){
   $('#borrar').onclick = async () => { if(!confirm('¿Borrar definitivamente?')) return; await borrar(store,id); if(store==='sesiones') for(const p of (await todos('fotos')).filter(p=>p.sesionId===id)) await borrar('fotos',p.id); toast('Borrado'); store==='fundicion'?listado('fundicion'):ir(vista); };
   if($('#nuevaSes')) $('#nuevaSes').onclick = () => { vista='sesiones'; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==='sesiones'));
     formulario('sesiones', null, store==='cargas' ? {cargaId:id, armaId:it.armaId||''} : {armaId:it.armaId,cargaId:it.cargaId,lugar:it.lugar,distanciaM:it.distanciaM,tipo:it.tipo,tirosPorGrupo:it.tirosPorGrupo}); };
+  if(store==='armas') $('#irCero').onclick = () => vistaCero(id);
   if(store==='sesiones'){ dianaSesion(it); $('#iaSesion').onclick = () => vistaIA(id);
     app.querySelectorAll('[data-borrarc]').forEach(a => a.onclick = async ev => { ev.preventDefault(); if(!confirm('¿Borrar esta consulta?')) return; await borrar('consultas', a.dataset.borrarc); detalle(store,id); }); }
   if($('#foto')) $('#foto').onchange = async ev => {
@@ -409,7 +425,7 @@ async function dianaSesion(s){
     let html = svg + `<div class="gsel">${gruposExist.map(n=>`<button data-g="${n}" class="${n===g?'on':''}" style="border-left:6px solid ${COLORES_G[(n-1)%6]}">Grupo ${n}</button>`).join('')}
       <button id="gNuevo">+ Grupo</button>
       <select id="dTam" style="width:auto;padding:5px 8px;font-size:13px">${[10,20,30,50,100].map(v=>`<option value="${v}"${v===S?' selected':''}>${v} cm</option>`).join('')}</select></div>
-      <p class="nota">Tocá la diana para marcar un impacto del grupo elegido. Tocá un impacto para borrarlo. El centro es tu punto de mira.${num(s.distanciaM)?'':' <b>Cargá la distancia de la sesión para ver los MOA y los clicks.</b>'}</p>`;
+      <p class="nota">Tocá la diana para marcar cada impacto del grupo elegido. Si te equivocás, usá «Deshacer último». El centro es tu punto de mira.${num(s.distanciaM)?'':' <b>Cargá la distancia de la sesión para ver los MOA y los clicks.</b>'}</p>`;
     const res = an.grupos.filter(x=>x.n);
     if(res.length){
       html += `<div class="stats">`;
@@ -433,14 +449,13 @@ async function dianaSesion(s){
       const q = pt.matrixTransform(el.getScreenCTM().inverse());
       const x = +q.x.toFixed(2), y = +(-q.y).toFixed(2);
       s.impactos = s.impactos || [];
-      const cerca = s.impactos.findIndex(p => p.g===g && Math.hypot(p.x-x, p.y-y) < S/45);
-      if(cerca>=0) s.impactos.splice(cerca,1); else s.impactos.push({x, y, g});
+      s.impactos.push({x, y, g});
       await persistir(); pintar();
     });
     box.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { g = +b.dataset.g; pintar(); });
     $('#gNuevo').onclick = () => { g = Math.max(0, ...(s.impactos||[]).map(p=>p.g), g) + 1; pintar(); };
     $('#dTam').onchange = async ev => { S = +ev.target.value; s.dianaCm = S; await persistir(); pintar(); };
-    if($('#dDeshacer')) $('#dDeshacer').onclick = async () => { s.impactos.pop(); await persistir(); pintar(); };
+    if($('#dDeshacer')) $('#dDeshacer').onclick = async () => { const i = s.impactos.map(p=>p.g).lastIndexOf(g); if(i>=0) s.impactos.splice(i,1); else s.impactos.pop(); await persistir(); pintar(); };
     if($('#dPasar')) $('#dPasar').onclick = async () => {
       const gs = analisisDiana(s).grupos.filter(x=>x.n>1);
       s.gruposMm = gs.map(x=>f(x.esMm,1)).join(', ');
@@ -450,6 +465,264 @@ async function dianaSesion(s){
     };
   }
   pintar();
+}
+/* ================= Asistente de cero ================= */
+const CERO_KEY = 'mosca.cero';
+const PERFIL_GENERICO = { bc:0.40, modelo:'G1', v0:800 };   // .308 de caza típico, para cuando no hay datos de la carga
+let CZ = null;
+function guardarCZ(){ try{ localStorage.setItem(CERO_KEY, JSON.stringify(CZ)); }catch(e){} }
+function cmPorUnidad(D, unidad){ return unidad==='MRAD' ? D*0.1 : D*Math.tan(Math.PI/10800)*100; }   // cm que mueve 1 MOA / 1 MRAD a D metros
+function perfilBal(){
+  const c = CZ.carga || {};
+  const real = !!(c.bc && c.v0);
+  return { real, bc: c.bc || PERFIL_GENERICO.bc, modelo: c.modeloBC || PERFIL_GENERICO.modelo, v0: c.v0 || PERFIL_GENERICO.v0 };
+}
+// dónde tiene que pegar a la distancia D (cm sobre la línea de mira) para quedar en cero a Z
+function alturaObjetivo(D, Z){
+  if(Math.abs(D-Z) < 0.5) return 0;
+  const pb = perfilBal();
+  const t = Balistica.tablaDeTiro({ bc:pb.bc, modelo:pb.modelo, v0:pb.v0, alturaMira:CZ.alturaMira||4, ceroM:Z, tempC:20, presionHPa:1013, humedad:50 }, D, D);
+  return t.length ? t[t.length-1].caidaCm : 0;
+}
+function curvaCero(Z){
+  const pb = perfilBal();
+  return Balistica.tablaDeTiro({ bc:pb.bc, modelo:pb.modelo, v0:pb.v0, alturaMira:CZ.alturaMira||4, ceroM:Z, tempC:20, presionHPa:1013, humedad:50 }, 300, 50).filter(r=>r.dist>0);
+}
+const cmSigno = v => { const r = Math.round(v); return r===0 ? '0' : (r>0?'+':'−')+Math.abs(r)+' cm'; };
+function barraPasos(n){ return `<div class="pasos">${[1,2,3,4,5].map(i=>`<span class="${i<=n?'on':''}"></span>`).join('')}</div>`; }
+async function vistaCero(armaId){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on')); vista='cero';
+  let prev = null; try{ prev = JSON.parse(localStorage.getItem(CERO_KEY)||'null'); }catch(e){}
+  if(prev && prev.paso>1 && !armaId){
+    app.innerHTML = `<h2>🎯 Asistente de cero</h2><div class="card"><div class="t">Tenés una calibración a medio hacer</div><div class="s">${esc(prev.armaNombre||'')} · etapa a ${prev.D||'—'} m · ronda ${prev.ronda||1}</div>
+      <div class="acts"><button class="btn sec" id="czNueva">Empezar de nuevo</button><button class="btn" id="czSeguir">Seguir</button></div></div>`;
+    $('#czSeguir').onclick = () => { CZ = prev; pasoCero(); };
+    $('#czNueva').onclick = () => { localStorage.removeItem(CERO_KEY); vistaCero(); };
+    return;
+  }
+  CZ = { paso:1, armaId: armaId||'', ronda:1, impactos:[], correcciones:[], etapas:[] };
+  pasoCero();
+}
+async function pasoCero(){
+  window.scrollTo(0,0);
+  guardarCZ();
+  const P = { 1:paso1, 2:paso2, 3:paso3, 4:paso4, 5:paso5, 6:paso6 }[CZ.paso];
+  await P();
+}
+/* Paso 1: arma y mira */
+async function paso1(){
+  const armas = await todos('armas'), cargas = await todos('cargas');
+  const a = armas.find(x=>x.id===CZ.armaId) || {};
+  app.innerHTML = `<h2>🎯 Asistente de cero</h2>${barraPasos(1)}
+  <div class="card"><div class="t">1 · Tu fusil y tu mira</div>
+    <p class="nota">Vamos a centrar la mira para que la bala pegue donde apuntás. Primero, unos datos que están en la mira misma.</p>
+    <label for="czArma">Arma</label>
+    <select id="czArma"><option value="">+ Arma nueva</option>${armas.map(x=>`<option value="${x.id}"${x.id===CZ.armaId?' selected':''}>${esc(x.nombre)}</option>`).join('')}</select>
+    <div id="czNuevaArma" style="${CZ.armaId?'display:none':''}"><label for="czNombre">Nombre del arma (ej. "Rem 700 .308")</label><input id="czNombre"></div>
+    <label for="czCarga">Munición que vas a usar para cazar (opcional)</label>
+    <select id="czCarga"><option value="">— (no la tengo cargada)</option>${cargas.map(c=>`<option value="${c.id}"${c.id===CZ.cargaId?' selected':''}>${esc(c.nombre)}</option>`).join('')}</select>
+    <p class="nota">Calibrá siempre con la misma munición con la que vas a cazar: otra marca o peso de punta pega en otro lado.</p>
+    <label for="czUnidad">¿Qué dice en las torretas de la mira?</label>
+    <select id="czUnidad">
+      <option value="MOA|0.25"${(a.unidadClick||'MOA')==='MOA' && (a.valorClick||0.25)==0.25?' selected':''}>"1/4 MOA" o "1 click = 1/4 in @ 100 yds" (lo más común)</option>
+      <option value="MOA|0.125"${a.unidadClick==='MOA' && a.valorClick==0.125?' selected':''}>"1/8 MOA"</option>
+      <option value="MOA|0.5"${a.unidadClick==='MOA' && a.valorClick==0.5?' selected':''}>"1/2 MOA"</option>
+      <option value="MRAD|0.1"${a.unidadClick==='MRAD' && (a.valorClick||0.1)==0.1?' selected':''}>"0.1 MRAD" o "1 cm @ 100 m"</option>
+      <option value="MRAD|0.05"${a.unidadClick==='MRAD' && a.valorClick==0.05?' selected':''}>"0.05 MRAD"</option>
+    </select>
+    <p class="nota">Está escrito en la tapa de la torreta o en la torreta misma. Cada "click" que sentís al girar mueve el impacto esa cantidad.</p>
+    <label for="czAltura">Altura de la mira sobre el caño (cm)</label>
+    <input id="czAltura" inputmode="decimal" value="${esc(a.alturaMiraCm||4)}">
+    <p class="nota">Del centro del caño al centro de la mira. Si no sabés, dejá 4 cm: alcanza para cazar.</p>
+    <div class="acts"><button class="btn" id="czSig">Siguiente</button></div>
+  </div>`;
+  $('#czArma').onchange = ev => { $('#czNuevaArma').style.display = ev.target.value ? 'none' : ''; CZ.armaId = ev.target.value; paso1(); };
+  $('#czSig').onclick = async () => {
+    let armaId = $('#czArma').value;
+    const [unidad, click] = $('#czUnidad').value.split('|');
+    const altura = num($('#czAltura').value) || 4;
+    let arma;
+    if(!armaId){
+      const nombre = $('#czNombre').value.trim(); if(!nombre){ toast('Poné un nombre para el arma'); return; }
+      arma = { id:nuevoId(), creado:new Date().toISOString(), nombre };
+    } else arma = await uno('armas', armaId);
+    Object.assign(arma, { unidadClick:unidad, valorClick:+click, alturaMiraCm:altura, modificado:new Date().toISOString() });
+    await guardar('armas', arma);
+    CZ.armaId = arma.id; CZ.armaNombre = arma.nombre; CZ.unidad = unidad; CZ.click = +click; CZ.alturaMira = altura;
+    CZ.cargaId = $('#czCarga').value;
+    CZ.carga = CZ.cargaId ? await uno('cargas', CZ.cargaId) : null;
+    CZ.paso = 2; pasoCero();
+  };
+}
+/* Paso 2: preparación */
+function paso2(){
+  const items = [
+    ['Mira bien montada', 'Los tornillos de las bases y anillas ajustados (sin pasarse). Si la mira se mueve, nunca vas a lograr el cero.'],
+    ['Retículo derecho', 'Con el arma vertical, la cruz no tiene que estar torcida.'],
+    ['Retículo enfocado a tu ojo', 'Mirando el cielo, la cruz se ve nítida. Si no, girá el anillo del ocular.'],
+    ['Aumento fijo', 'Poné el aumento que más uses y no lo cambies durante la calibración.'],
+    ['Apoyo firme', 'Mesa con bolsas o bípode y una bolsa atrás. Nada de tirar a pulso para calibrar.'],
+    ['Caño frío y seco', 'Si lo limpiaste con aceite, el primer tiro puede pegar distinto. Esperá entre tiros.'],
+    ['Seguridad', 'Lugar habilitado, protección auditiva y visual, y nadie adelante.']
+  ];
+  app.innerHTML = `<h2>🎯 Asistente de cero</h2>${barraPasos(2)}
+  <div class="card"><div class="t">2 · Antes de tirar</div>
+    <p class="nota">Revisá esto. La mayoría de los problemas de cero no son de la mira, son de acá.</p>
+    ${items.map((x,i)=>`<label class="check"><input type="checkbox" class="czChk"><span><b>${x[0]}</b><small>${x[1]}</small></span></label>`).join('')}
+    <div class="acts"><button class="btn sec" id="czAtras">Atrás</button><button class="btn" id="czSig">Listo, sigamos</button></div>
+  </div>`;
+  $('#czAtras').onclick = () => { CZ.paso = 1; pasoCero(); };
+  $('#czSig').onclick = () => {
+    const faltan = [...document.querySelectorAll('.czChk')].filter(c=>!c.checked).length;
+    if(faltan && !confirm(`Te quedan ${faltan} puntos sin marcar. ¿Seguir igual?`)) return;
+    CZ.paso = 3; pasoCero();
+  };
+}
+/* Paso 3: elegir el cero */
+function paso3(){
+  const pb = perfilBal();
+  const opciones = [
+    [100, 'Cero a 100 m', 'Lo más simple. Ideal si cazás a menos de 150 m (monte, apostadero, aguada).'],
+    [150, 'Cero a 150 m', 'Pega un poco alto a 100 m y casi nada bajo a 200 m. Muy práctico para campo abierto.'],
+    [200, 'Cero a 200 m', 'Para tiros largos: a 100 m pega varios cm alto. Tenelo en cuenta en los tiros cortos.']
+  ];
+  CZ.Z = CZ.Z || 100;
+  const tabla = Z => { const c = curvaCero(Z); return `<div class="tabla" style="margin-top:8px"><table><tr><th>Distancia</th>${c.map(r=>`<th>${r.dist} m</th>`).join('')}</tr><tr><td>Impacto</td>${c.map(r=>`<td>${cmSigno(r.caidaCm)}</td>`).join('')}</tr></table></div>`; };
+  app.innerHTML = `<h2>🎯 Asistente de cero</h2>${barraPasos(3)}
+  <div class="card"><div class="t">3 · ¿A qué distancia querés el cero?</div>
+    <p class="nota">"Cero a 100 m" quiere decir que a 100 m la bala pega justo donde apuntás. A otras distancias pega un poco más alto o más bajo.</p>
+    ${opciones.map(o=>`<button class="opcion${CZ.Z===o[0]?' on':''}" data-z="${o[0]}"><b>${o[1]}</b><small>${o[2]}</small></button>`).join('')}
+    <div id="czTabla">${tabla(CZ.Z)}</div>
+    <p class="nota">${pb.real ? 'Calculado con los datos de tu munición.' : 'Calculado para un .308 de caza típico (no cargaste BC y velocidad de tu munición): tomalo como referencia.'} "+" = pega arriba de donde apuntás, "−" = abajo.</p>
+    <div class="acts"><button class="btn sec" id="czAtras">Atrás</button><button class="btn" id="czSig">Siguiente</button></div>
+  </div>`;
+  app.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { CZ.Z = +b.dataset.z; app.querySelectorAll('[data-z]').forEach(x=>x.classList.toggle('on', x===b)); $('#czTabla').innerHTML = tabla(CZ.Z); guardarCZ(); });
+  $('#czAtras').onclick = () => { CZ.paso = 2; pasoCero(); };
+  $('#czSig').onclick = () => { CZ.paso = 4; pasoCero(); };
+}
+/* Paso 4: primera distancia y colimado */
+function paso4(){
+  const Dfinal = CZ.Z >= 150 ? 100 : CZ.Z;
+  app.innerHTML = `<h2>🎯 Asistente de cero</h2>${barraPasos(4)}
+  <div class="card"><div class="t">4 · ¿La mira es nueva o recién montada?</div>
+    <button class="opcion" data-et="nueva"><b>Sí, es nueva o la desmonté</b><small>Empezamos cerca, a 25 m, para asegurarnos de pegar en el papel. Después pasamos a ${Dfinal} m.</small></button>
+    <button class="opcion" data-et="ajuste"><b>No, ya estaba cerca, solo quiero verificar</b><small>Vamos directo a ${Dfinal} m.</small></button>
+    <div class="sep"></div>
+    <div class="t">Truco para mira nueva: colimar por el caño</div>
+    <p class="nota">Con fusil de cerrojo: sacá el cerrojo, apoyá el arma firme y mirá por dentro del caño hasta ver el blanco de 25 m centrado. Sin mover el arma, girá las torretas hasta que la cruz de la mira quede también sobre el blanco. Así el primer tiro ya cae en el papel.</p>
+    ${CZ.Z>100 ? `<p class="nota">Para tu cero a ${CZ.Z} m vamos a calibrar a 100 m apuntando a que pegue <b>${f(alturaObjetivo(100,CZ.Z),1)} cm arriba</b> del centro: es lo mismo que cero a ${CZ.Z} m, pero más fácil de ver.</p>` : ''}
+    <div class="acts"><button class="btn sec" id="czAtras">Atrás</button></div>
+  </div>`;
+  app.querySelectorAll('[data-et]').forEach(b => b.onclick = () => {
+    CZ.etapasPlan = b.dataset.et==='nueva' ? [25, Dfinal] : [Dfinal];
+    CZ.etapaIdx = 0; CZ.D = CZ.etapasPlan[0]; CZ.ronda = 1; CZ.impactos = []; CZ.correcciones = [];
+    CZ.paso = 5; pasoCero();
+  });
+  $('#czAtras').onclick = () => { CZ.paso = 3; pasoCero(); };
+}
+/* Paso 5: rondas de tiro y corrección */
+function paso5(){
+  const D = CZ.D;
+  const objetivo = D===25 ? 0 : alturaObjetivo(D, CZ.Z);       // a 25 m, solo centrar
+  const S = D<=25 ? 20 : (D<=100 ? 30 : 50);
+  const tolCm = Math.max(1, cmPorUnidad(D,'MOA') * (D===25 ? 2 : 1));
+  const ronda = CZ.ronda;
+  const imp = () => CZ.impactos.filter(p=>p.g===ronda);
+  app.innerHTML = `<h2>🎯 Asistente de cero</h2>${barraPasos(5)}
+  <div class="card"><div class="t">5 · Etapa a ${D} m — ronda ${ronda}</div>
+    <p class="nota">Poné el blanco a <b>${D} m</b>. Apuntá siempre al centro, aunque los tiros peguen en otro lado. Tirá <b>3 tiros</b> con calma, esperando un minuto entre cada uno. Después marcá dónde pegó cada uno tocando la diana.</p>
+    ${objetivo ? `<p class="nota">Buscamos que el grupo quede <b>${f(objetivo,1)} cm arriba</b> del centro (marcado con la línea punteada).</p>` : ''}
+    <div id="czDiana"></div>
+    <div class="acts"><button class="btn sec" id="czDeshacer">Deshacer</button><button class="btn" id="czCalc">Calcular corrección</button></div>
+    <div id="czRes"></div>
+    <details style="margin-top:10px"><summary class="nota" style="cursor:pointer">No encuentro los impactos en el papel</summary>
+      <p class="nota">Acercate a 25 m y usá un papel grande (un cartón de 50 × 50 cm sirve). Revisá que la mira esté firme y probá colimar por el caño (paso anterior). Si un impacto cae fuera del dibujo, marcalo en el borde en la dirección correcta.</p></details>
+  </div>`;
+  function dibujar(){
+    const r = S/2, paso = S/10;
+    let svg = `<svg class="diana" id="czSvg" viewBox="${-r} ${-r} ${S} ${S}" xmlns="http://www.w3.org/2000/svg">`;
+    for(let i=5;i>=1;i--) svg += `<circle cx="0" cy="0" r="${i*paso}" fill="${i<=2?'#1c1c1c':'none'}" stroke="${i<=2?'#efe9d8':'#1c1c1c'}" stroke-width="${S/400}"/>`;
+    svg += `<line x1="${-r}" y1="0" x2="${r}" y2="0" stroke="#7a7a7a" stroke-width="${S/600}"/><line x1="0" y1="${-r}" x2="0" y2="${r}" stroke="#7a7a7a" stroke-width="${S/600}"/>`;
+    if(objetivo) svg += `<line x1="${-r}" y1="${-objetivo}" x2="${r}" y2="${-objetivo}" stroke="#c9a13b" stroke-width="${S/300}" stroke-dasharray="${S/60} ${S/80}"/>`;
+    svg += `<text x="${-r+S/60}" y="${r-S/60}" font-size="${S/28}" fill="#7a7a7a">${D} m · diana de ${S} cm</text>`;
+    CZ.impactos.filter(p=>p.g<ronda).forEach(p => svg += `<circle cx="${p.x}" cy="${-p.y}" r="${S/80}" fill="#999" opacity=".35"/>`);
+    imp().forEach((p,i) => svg += `<circle cx="${p.x}" cy="${-p.y}" r="${S/60}" fill="#c0392b" stroke="#fff" stroke-width="${S/500}"/><text x="${p.x}" y="${-p.y+S/160}" font-size="${S/45}" fill="#fff" text-anchor="middle">${i+1}</text>`);
+    svg += `</svg>`;
+    $('#czDiana').innerHTML = svg + `<p class="nota" style="text-align:center">${imp().length} de 3 impactos marcados${CZ.impactos.some(p=>p.g<ronda)?' · en gris, las rondas anteriores':''}</p>`;
+    const el = $('#czSvg');
+    el.addEventListener('click', ev => {
+      const pt = el.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+      const q = pt.matrixTransform(el.getScreenCTM().inverse());
+      const x = +q.x.toFixed(2), y = +(-q.y).toFixed(2);
+      CZ.impactos.push({x,y,g:ronda});
+      guardarCZ(); dibujar(); $('#czRes').innerHTML = '';
+    });
+  }
+  dibujar();
+  $('#czDeshacer').onclick = () => { const i = CZ.impactos.map(p=>p.g).lastIndexOf(ronda); if(i>=0){ CZ.impactos.splice(i,1); guardarCZ(); dibujar(); } };
+  $('#czCalc').onclick = () => {
+    const pts = imp();
+    if(pts.length < 2){ toast('Marcá al menos 2 impactos (mejor 3)'); return; }
+    const an = analisisGrupo(pts, D);
+    const esMoa = an.esMm/10 / cmPorUnidad(D,'MOA');
+    const dV = objetivo - an.mpiY, dH = -an.mpiX;               // cm que hay que mover el impacto
+    const cu = cmPorUnidad(D, CZ.unidad);
+    const cV = Math.round(dV / cu / CZ.click), cH = Math.round(dH / cu / CZ.click);
+    let html = '';
+    if(esMoa > 4 && pts.length >= 3){
+      html += `<p class="nota" style="color:var(--bad)"><b>Ojo:</b> el grupo está muy abierto (${f(an.esMm/10,1)} cm, ${f(esMoa,1)} MOA). Antes de tocar la mira revisá el apoyo, que la mira esté firme y que no estés tirando del gatillo. Podés corregir igual, pero tomalo con pinzas.</p>`;
+    }
+    const centrado = Math.abs(dV) <= tolCm && Math.abs(dH) <= tolCm;
+    if(centrado || (cV===0 && cH===0)){
+      html += `<div class="ok-big">✔ Centrado a ${D} m</div><p class="nota">El grupo quedó a ${f(Math.hypot(dV,dH),1)} cm de donde tiene que estar. Grupo de ${f(an.esMm/10,1)} cm.</p>`;
+      const ultima = CZ.etapaIdx >= CZ.etapasPlan.length-1;
+      html += `<div class="acts"><button class="btn" id="czEtapaOk">${ultima ? 'Terminar' : `Pasar a ${CZ.etapasPlan[CZ.etapaIdx+1]} m`}</button></div>`;
+    } else {
+      const lineas = [];
+      if(cV) lineas.push(`Torreta de <em>ELEVACIÓN</em> (arriba): <em>${Math.abs(cV)} clicks</em> hacia <em>${cV>0?'"UP" / arriba':'abajo (contrario a "UP")'}</em>`);
+      if(cH) lineas.push(`Torreta de <em>DERIVA</em> (costado): <em>${Math.abs(cH)} clicks</em> hacia <em>${cH>0?'"R" / derecha':'"L" / izquierda'}</em>`);
+      html += `<p class="nota">El grupo pegó ${f(Math.abs(an.mpiY - objetivo),1)} cm ${an.mpiY>objetivo?'alto':'bajo'} y ${f(Math.abs(an.mpiX),1)} cm a la ${an.mpiX>0?'derecha':'izquierda'}.</p>
+        <div class="orden">${lineas.join('<br>')}</div>
+        <p class="nota">Las flechas de la torreta indican hacia dónde se mueve el impacto. Contá los clicks en voz baja mientras girás.${D===25?' A 25 m cada click mueve poco: es normal que sean muchos.':''}</p>
+        <div class="acts"><button class="btn" id="czOtraRonda">Ya giré, tirar otra ronda</button></div>`;
+      CZ._ultimaCorr = `${D} m ronda ${ronda}: ${lineas.map(l=>l.replace(/<[^>]+>/g,'')).join('; ')}`;
+    }
+    $('#czRes').innerHTML = html;
+    if($('#czOtraRonda')) $('#czOtraRonda').onclick = () => { CZ.correcciones.push(CZ._ultimaCorr); CZ.ronda++; guardarCZ(); paso5(); };
+    if($('#czEtapaOk')) $('#czEtapaOk').onclick = async () => {
+      await guardarEtapa(D, S, objetivo);
+      if(CZ.etapaIdx < CZ.etapasPlan.length-1){ CZ.etapaIdx++; CZ.D = CZ.etapasPlan[CZ.etapaIdx]; CZ.ronda = 1; CZ.impactos = []; CZ.correcciones = []; guardarCZ(); paso5(); }
+      else { CZ.paso = 6; pasoCero(); }
+    };
+  };
+}
+async function guardarEtapa(D, S, objetivo){
+  const s = { id:nuevoId(), creado:new Date().toISOString(), fecha:hoy(), armaId:CZ.armaId, cargaId:CZ.cargaId||'', tipo:'verificación de cero',
+    distanciaM:D, disparos:CZ.impactos.length, impactos:CZ.impactos.slice(), dianaCm:S,
+    correccion: CZ.correcciones.join(' | ') || 'sin correcciones',
+    notas:`Asistente de cero: etapa a ${D} m para cero a ${CZ.Z} m${objetivo?` (objetivo ${f(objetivo,1)} cm arriba)`:''}. ${CZ.ronda} ronda(s).` };
+  await guardar('sesiones', s);
+  CZ.etapas.push({ D, sesionId:s.id, rondas:CZ.ronda });
+}
+/* Paso 6: listo */
+async function paso6(){
+  const arma = await uno('armas', CZ.armaId);
+  arma.ceroM = CZ.Z; arma.modificado = new Date().toISOString();
+  await guardar('armas', arma);
+  const c = curvaCero(CZ.Z);
+  app.innerHTML = `<h2>🎯 Asistente de cero</h2>${barraPasos(5)}
+  <div class="card"><div class="ok-big">✔ Mira calibrada: cero a ${CZ.Z} m</div>
+    <p class="nota">Quedó guardado en <b>${esc(arma.nombre)}</b>, con una sesión de "verificación de cero" por cada etapa.</p>
+    <div class="tabla" style="margin-top:8px"><table><tr><th>Distancia</th>${c.map(r=>`<th>${r.dist} m</th>`).join('')}</tr><tr><td>Impacto</td>${c.map(r=>`<td>${cmSigno(r.caidaCm)}</td>`).join('')}</tr></table></div>
+    <p class="nota"><b>Antes de cazar:</b> el día anterior a salir, tirá 1 o 2 tiros con el caño frío para confirmar que sigue en cero. Si el arma recibe un golpe o viaja mucho, verificá de nuevo.</p>
+    <div class="acts"><button class="btn sec" id="czTabla">Ver tabla completa</button><button class="btn" id="czFin">Listo</button></div>
+  </div>`;
+  localStorage.removeItem(CERO_KEY);
+  $('#czFin').onclick = () => { CZ = null; detalle('armas', arma.id); vista='armas'; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==='armas')); };
+  $('#czTabla').onclick = () => {
+    try{ const prev = JSON.parse(localStorage.getItem(BAL_KEY)||'{}'); Object.assign(prev, { arma:arma.id, carga:CZ.cargaId||prev.carga, cero:String(CZ.Z) }); localStorage.setItem(BAL_KEY, JSON.stringify(prev)); }catch(e){}
+    ir('balistica');
+  };
 }
 function comprimir(file){
   return new Promise((res,rej)=>{
@@ -518,7 +791,9 @@ function calcular(){
 /* ================= Más: fundición, exportar, importar ================= */
 async function vistaMas(){
   const cuenta = {}; for(const s of STORES) cuenta[s] = (await todos(s)).length;
-  app.innerHTML = `<h2>Fundición</h2>
+  app.innerHTML = `<h2>Calibrar la mira</h2>
+  <div class="card click" id="irCeroMas"><div class="t">🎯 Asistente de cero</div><div class="s">Te guía paso a paso para centrar una mira nueva o verificar el cero antes de salir a cazar.</div></div>
+  <h2>Fundición</h2>
   <div class="card click" id="irFund"><div class="t">Lotes de puntas fundidas</div><div class="s">${cuenta.fundicion} lotes cargados</div></div>
   <h2>Ajustes</h2>
   <div class="card"><label for="prefVel" style="margin-top:0">Unidad de velocidad</label>
@@ -543,6 +818,7 @@ async function vistaMas(){
   <p class="nota">Guardado en este teléfono: ${cuenta.armas} armas · ${cuenta.cargas} cargas · ${cuenta.sesiones} sesiones · ${cuenta.fotos} fotos. Los datos no salen del teléfono salvo que los exportes o los mandes a una IA.</p>
   <p class="nota">MOSCA es software libre. Las cargas que anotes son tuyas: los datos de partida siempre salen de un manual de recarga, nunca de esta app.</p>`;
   $('#irFund').onclick = () => listado('fundicion');
+  $('#irCeroMas').onclick = () => vistaCero();
   $('#prefVel').onchange = ev => { PREFS.vel = ev.target.value; guardarPrefs(); toast('Velocidades en '+UV()); };
   $('#abrirIA').onclick = () => vistaIA();
   $('#iaProv').onchange = ev => { $('#iaClaveLink').href = PROVS[ev.target.value].claveUrl; $('#iaModelo').placeholder = ev.target.value==='gemini' ? 'automático' : (PROVS[ev.target.value].modelo||''); };
@@ -592,7 +868,7 @@ async function importar(ev){
 }
 
 /* ================= Arranque ================= */
-const VISTAS = { armas:()=>listado('armas'), cargas:()=>listado('cargas'), sesiones:()=>listado('sesiones'), balistica:vistaBalistica, mas:vistaMas, ia:()=>vistaIA() };
+const VISTAS = { armas:()=>listado('armas'), cargas:()=>listado('cargas'), sesiones:()=>listado('sesiones'), balistica:vistaBalistica, mas:vistaMas, ia:()=>vistaIA(), cero:()=>vistaCero() };
 try{ if(localStorage.getItem('mosca.noche')==='1') document.body.classList.add('noche'); }catch(e){}
 $('#btnNoche').onclick = () => { const on = document.body.classList.toggle('noche'); try{ localStorage.setItem('mosca.noche', on?'1':'0'); }catch(e){} };
 $('#ver').textContent = 'v'+VERSION;

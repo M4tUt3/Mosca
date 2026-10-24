@@ -76,6 +76,11 @@ body.noche .diana{background:#1a0000}
 .gsel{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
 .gsel button{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:99px;padding:5px 11px;font-size:13px}
 .gsel button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
+.resp{white-space:pre-wrap;font-size:15px;line-height:1.5;margin-top:8px}
+.resp b{color:var(--acc)}
+.consulta .q{font-weight:600}
+.consulta .meta{font-size:12px;color:var(--tx2);margin-top:4px}
+.cargando{color:var(--acc);font-size:14px;margin-top:10px}
 .sep{height:1px;background:var(--line);margin:14px 0}
 dialog{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:var(--r);max-width:92vw}
 dialog img{max-width:86vw;max-height:70vh}
@@ -103,7 +108,7 @@ dialog img{max-width:86vw;max-height:70vh}
 <script src="balistica.js"></script>
 <script>
 'use strict';
-const VERSION = '1.5';
+const VERSION = '1.6';
 /* ================= Preferencias y unidades ================= */
 const PREF_KEY = 'mosca.prefs';
 let PREFS = { vel:'fps' };
@@ -115,11 +120,11 @@ const velOut = ms => ms==null ? null : (PREFS.vel==='fps' ? ms*FPS : ms);   // i
 const velIn  = x  => x==null ? null : (PREFS.vel==='fps' ? x/FPS : x);      // pantalla -> interno (m/s)
 const CAMPOS_VEL = ['v0','velocidades'];
 /* ================= Base de datos (IndexedDB) ================= */
-const STORES = ['armas','cargas','sesiones','fundicion','fotos'];
+const STORES = ['armas','cargas','sesiones','fundicion','fotos','consultas'];
 let dbp;
 function db(){
   if(!dbp) dbp = new Promise((res,rej)=>{
-    const r = indexedDB.open('mosca',1);
+    const r = indexedDB.open('mosca',2);
     r.onupgradeneeded = () => { for(const s of STORES) if(!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s,{keyPath:'id'}); };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
@@ -328,6 +333,8 @@ async function detalle(store, id){
     if(st.vel) html += `<div class="stats"><div class="stat"><b>${f(velOut(st.vel.prom),0)}</b><i>${UV()} promedio</i></div><div class="stat"><b>${f(velOut(st.vel.sd),1)}</b><i>desvío est. (DE)</i></div><div class="stat"><b>${f(velOut(st.vel.es),1)}</b><i>disp. extrema (ES)</i></div><div class="stat"><b>${st.vel.n}</b><i>tiros medidos</i></div></div>`;
     if(st.grupos) html += `<div class="stats"><div class="stat"><b>${f(st.grupos.promMoa,2)}</b><i>MOA promedio</i></div><div class="stat"><b>${f(st.grupos.mejorMoa,2)}</b><i>mejor grupo MOA</i></div><div class="stat"><b>${f(st.grupos.promMm,0)}</b><i>mm promedio</i></div><div class="stat"><b>${st.grupos.n}</b><i>grupos</i></div></div>`;
     html += `<h2>Diana</h2><div id="dianaBox"></div>`;
+    const cons = (await todos('consultas')).filter(c=>c.sesionId===id).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    html += `<h2>Consultas a la IA</h2>${cons.map(c=>tarjetaConsulta(c,{})).join('')}<button class="btn sec full" id="iaSesion">✦ Preguntar a la IA sobre esta sesión</button>`;
     const fotos = (await todos('fotos')).filter(p=>p.sesionId===id);
     html += `<h2>Fotos de blancos</h2><div class="fotos">${fotos.map(p=>`<img src="${p.data}" data-id="${p.id}" alt="blanco">`).join('')}</div>
       <label class="btn sec" style="display:inline-block;margin-top:8px;color:var(--tx)">📷 Agregar foto<input type="file" accept="image/*" capture="environment" id="foto" hidden></label>`;
@@ -341,7 +348,8 @@ async function detalle(store, id){
   $('#borrar').onclick = async () => { if(!confirm('¿Borrar definitivamente?')) return; await borrar(store,id); if(store==='sesiones') for(const p of (await todos('fotos')).filter(p=>p.sesionId===id)) await borrar('fotos',p.id); toast('Borrado'); store==='fundicion'?listado('fundicion'):ir(vista); };
   if($('#nuevaSes')) $('#nuevaSes').onclick = () => { vista='sesiones'; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==='sesiones'));
     formulario('sesiones', null, store==='cargas' ? {cargaId:id, armaId:it.armaId||''} : {armaId:it.armaId,cargaId:it.cargaId,lugar:it.lugar,distanciaM:it.distanciaM,tipo:it.tipo,tirosPorGrupo:it.tirosPorGrupo}); };
-  if(store==='sesiones') dianaSesion(it);
+  if(store==='sesiones'){ dianaSesion(it); $('#iaSesion').onclick = () => vistaIA(id);
+    app.querySelectorAll('[data-borrarc]').forEach(a => a.onclick = async ev => { ev.preventDefault(); if(!confirm('¿Borrar esta consulta?')) return; await borrar('consultas', a.dataset.borrarc); detalle(store,id); }); }
   if($('#foto')) $('#foto').onchange = async ev => {
     const file = ev.target.files[0]; if(!file) return;
     const data = await comprimir(file);
@@ -517,8 +525,15 @@ async function vistaMas(){
    <select id="prefVel"><option value="fps"${PREFS.vel==='fps'?' selected':''}>fps (pies por segundo)</option><option value="ms"${PREFS.vel==='ms'?' selected':''}>m/s (metros por segundo)</option></select>
    <p class="nota">Se aplica a cargas, sesiones y calculadora. Lo ya cargado se convierte solo.</p></div>
   <h2>Modo IA</h2>
-  <div class="card"><div class="s">El botón <b>✦ IA</b> de arriba arma tus datos con tu pregunta y los abre en Claude, ChatGPT o la IA que uses. Necesita señal.</div>
-   <div class="acts"><button class="btn" id="abrirIA">✦ Preguntarle a una IA</button></div></div>
+  <div class="card"><div class="s">Con el botón <b>✦ IA</b> preguntás con todos tus datos y la respuesta queda guardada en el historial. Necesita señal.</div>
+   <label for="iaProv">Ajustes de IA — proveedor</label>
+   <select id="iaProv">${Object.entries(PROVS).map(([k,v])=>`<option value="${k}"${k===IACFG.prov?' selected':''}>${v.nombre}</option>`).join('')}</select>
+   <label for="iaClave">Clave de API <a id="iaClaveLink" href="${PROVS[IACFG.prov].claveUrl}" target="_blank" rel="noopener" style="color:var(--acc)">(conseguir clave)</a></label>
+   <input id="iaClave" type="password" autocomplete="off" value="${esc(IACFG.clave)}" placeholder="Pegá tu clave">
+   <label for="iaModelo">Modelo (opcional, vacío = automático)</label>
+   <input id="iaModelo" value="${esc(IACFG.modelo)}" placeholder="${IACFG.prov==='gemini'?'automático':esc(PROVS[IACFG.prov].modelo||'')}">
+   <p class="nota">La clave queda guardada solo en este teléfono y se usa solo para hablar con esa IA. Con Gemini gratis, Google puede usar las consultas para mejorar sus modelos.</p>
+   <div class="acts"><button class="btn sec" id="iaGuardarCfg">Guardar ajustes</button><button class="btn" id="abrirIA">✦ Abrir IA</button></div></div>
   <h2>Copia de seguridad</h2>
   <div class="card"><div class="s">Exportá todo en un archivo JSON para guardarlo, pasarlo a otro teléfono o adjuntarlo en un chat con una IA.</div>
    <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="conFotos" style="width:auto"> Incluir fotos de blancos (archivo más pesado)</label>
@@ -529,7 +544,9 @@ async function vistaMas(){
   <p class="nota">MOSCA es software libre. Las cargas que anotes son tuyas: los datos de partida siempre salen de un manual de recarga, nunca de esta app.</p>`;
   $('#irFund').onclick = () => listado('fundicion');
   $('#prefVel').onchange = ev => { PREFS.vel = ev.target.value; guardarPrefs(); toast('Velocidades en '+UV()); };
-  $('#abrirIA').onclick = modoIA;
+  $('#abrirIA').onclick = () => vistaIA();
+  $('#iaProv').onchange = ev => { $('#iaClaveLink').href = PROVS[ev.target.value].claveUrl; $('#iaModelo').placeholder = ev.target.value==='gemini' ? 'automático' : (PROVS[ev.target.value].modelo||''); };
+  $('#iaGuardarCfg').onclick = () => { IACFG = { prov:$('#iaProv').value, clave:$('#iaClave').value.trim(), modelo:$('#iaModelo').value.trim() }; guardarIACfg(); toast('Ajustes de IA guardados'); };
   $('#exp').onclick = exportar;
   $('#imp').onchange = importar;
 }
@@ -537,7 +554,7 @@ async function construirExport(conFotos){
   const datos = { app:'MOSCA', formato:1, exportado:new Date().toISOString(),
     unidad_preferida_usuario: UV(),
     unidades:{ velocidad:'m/s', peso:'grains', distancia:'m', grupos:'mm', altura_mira:'cm', presion:'hPa', temperatura:'°C', coal_cbto:'mm' } };
-  for(const s of ['armas','cargas','sesiones','fundicion']) datos[s] = await todos(s);
+  for(const s of ['armas','cargas','sesiones','fundicion','consultas']) datos[s] = await todos(s);
   // resúmenes precalculados para que el agente no tenga que recalcular
   datos.resumen = { armas:[], cargas:[], sesiones:[] };
   for(const a of datos.armas) datos.resumen.armas.push({ id:a.id, nombre:a.nombre, disparos_totales: await conteoArma(a) });
@@ -575,7 +592,7 @@ async function importar(ev){
 }
 
 /* ================= Arranque ================= */
-const VISTAS = { armas:()=>listado('armas'), cargas:()=>listado('cargas'), sesiones:()=>listado('sesiones'), balistica:vistaBalistica, mas:vistaMas };
+const VISTAS = { armas:()=>listado('armas'), cargas:()=>listado('cargas'), sesiones:()=>listado('sesiones'), balistica:vistaBalistica, mas:vistaMas, ia:()=>vistaIA() };
 try{ if(localStorage.getItem('mosca.noche')==='1') document.body.classList.add('noche'); }catch(e){}
 $('#btnNoche').onclick = () => { const on = document.body.classList.toggle('noche'); try{ localStorage.setItem('mosca.noche', on?'1':'0'); }catch(e){} };
 $('#ver').textContent = 'v'+VERSION;
@@ -616,8 +633,7 @@ async function textoIA(pregunta){
   for(const s of ['armas','cargas','fundicion']) for(const r of await todos(s)) nombres[r.id] = r.nombre || ('Lote '+r.lote);
   const armas = await todos('armas'), cargas = await todos('cargas'), fund = await todos('fundicion');
   const ses = (await todos('sesiones')).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
-  let t = `Sos un experto en balística, tiro de precisión y recarga. Te paso mi cuaderno de la app MOSCA y una pregunta. Respondé usando mis datos; si falta algo, decilo y decime qué medir. Las cargas de pólvora siempre tienen que salir de un manual del fabricante: no inventes cargas ni pases máximos publicados.\n\n`;
-  t += `PREGUNTA: ${pregunta || '(analizá mis datos y decime qué conviene probar en la próxima sesión)'}\n\n`;
+  let t = (pregunta===null) ? '' : INSTRUCCIONES_IA + `\n\nPREGUNTA: ${pregunta || '(analizá mis datos y decime qué conviene probar en la próxima sesión)'}\n\n`;
   t += `DATOS MOSCA (${hoy()}) — velocidades en ${UV()}, grupos en mm y MOA, pesos en grains, distancias en m\n`;
   t += `\nARMAS\n`;
   for(const a of armas) t += `- ${lineaIA('armas',a,nombres)} · disparos totales: ${await conteoArma(a)}\n`;
@@ -645,23 +661,151 @@ async function copiar(texto){
   catch(e){ const ta=document.createElement('textarea'); ta.value=texto; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand('copy'); }catch(_){} ta.remove(); return ok; }
 }
 const DESTINOS = { claude:'https://claude.ai/new?q=', chatgpt:'https://chatgpt.com/?q=' };
-function modoIA(){
-  const d = $('#dlg');
-  d.innerHTML = `<h2>✦ Preguntarle a una IA</h2>
+const INSTRUCCIONES_IA = `Sos un experto en balística, tiro de precisión y recarga de munición. El usuario lleva su cuaderno de tiro en la app MOSCA y te pasa sus datos junto con una pregunta.
+- Respondé en el idioma del usuario, corto y al grano: lo lee en el celular, muchas veces en el polígono. Números siempre con unidades.
+- Usá sus datos. Si falta algo para responder bien, decilo y decí qué medir o anotar.
+- Compará cargas por grupo promedio en MOA más que por el mejor grupo suelto, y por desvío estándar de velocidad. Tres tiros son una muestra chica: decilo.
+- Con el impacto medio de la diana (vertical positivo = arriba, horizontal positivo = derecha) y el valor de click del arma, decí cuántos clicks corregir y para dónde.
+- Cargas de pólvora: los datos de partida salen SIEMPRE de un manual del fabricante. No inventes cargas, no pases los máximos publicados y explicá cómo trabajar una carga de a poco vigilando señales de presión. Si una carga anotada te parece peligrosa, avisalo primero.
+- Las tablas calculadas se confirman tirando antes de usarlas sobre un animal.
+- Terminá, si corresponde, con qué conviene probar en la próxima serie.`;
+
+/* ---- proveedores por API (la clave queda solo en este teléfono) ---- */
+const IA_KEY = 'mosca.ia';
+let IACFG = { prov:'gemini', clave:'', modelo:'' };
+try{ Object.assign(IACFG, JSON.parse(localStorage.getItem(IA_KEY)||'{}')); }catch(e){}
+const guardarIACfg = () => { try{ localStorage.setItem(IA_KEY, JSON.stringify(IACFG)); }catch(e){} };
+const PROVS = {
+  gemini: { nombre:'Gemini (Google) — gratis', claveUrl:'https://aistudio.google.com/apikey' },
+  claude: { nombre:'Claude (Anthropic) — pago por uso', claveUrl:'https://console.anthropic.com/settings/keys', modelo:'claude-sonnet-5-5' },
+  openai: { nombre:'ChatGPT (OpenAI) — pago por uso', claveUrl:'https://platform.openai.com/api-keys', modelo:'gpt-6-luna' }
+};
+async function modeloGemini(clave){
+  if(IACFG.modelo) return IACFG.modelo;
+  if(IACFG._gem) return IACFG._gem;
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers:{'x-goog-api-key':clave} });
+  if(!r.ok) throw new Error(await errorApi(r));
+  const j = await r.json();
+  const ok = (j.models||[]).filter(m => (m.supportedGenerationMethods||[]).includes('generateContent'))
+    .map(m => m.name.replace('models/','')).filter(n => /flash/.test(n) && !/(image|tts|audio|live|embed|thinking|exp|preview)/.test(n));
+  const pick = ok.find(n=>n==='gemini-flash-latest') || ok.sort().reverse().find(n=>!/lite/.test(n)) || ok[0];
+  if(!pick) throw new Error('No encontré un modelo Flash disponible para tu clave. Escribí el nombre del modelo en Ajustes.');
+  IACFG._gem = pick; guardarIACfg(); return pick;
+}
+async function errorApi(r){
+  let t = ''; try{ const j = await r.json(); t = j.error?.message || j.error?.type || JSON.stringify(j).slice(0,200); }catch(e){ t = r.statusText; }
+  if(r.status===401 || r.status===403 || /api key/i.test(t)) return 'La clave no es válida o no tiene permiso. Revisala en Más → Ajustes de IA. ('+t+')';
+  if(r.status===429) return 'Llegaste al límite de consultas por ahora. Probá en un rato. ('+t+')';
+  return `Error ${r.status}: ${t}`;
+}
+async function preguntarAPI(pregunta, contexto){
+  const { prov, clave } = IACFG;
+  if(!clave) throw new Error('Falta la clave de la IA. Cargala en Más → Ajustes de IA.');
+  const usuario = `PREGUNTA: ${pregunta}\n\n${contexto}`;
+  if(prov === 'gemini'){
+    const modelo = await modeloGemini(clave);
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+      method:'POST', headers:{'content-type':'application/json','x-goog-api-key':clave},
+      body: JSON.stringify({ systemInstruction:{parts:[{text:INSTRUCCIONES_IA}]}, contents:[{role:'user',parts:[{text:usuario}]}] }) });
+    if(!r.ok){ if(r.status===404){ IACFG._gem=''; guardarIACfg(); } throw new Error(await errorApi(r)); }
+    const j = await r.json();
+    const txt = (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();
+    if(!txt) throw new Error('La IA no devolvió respuesta' + (j.promptFeedback?.blockReason ? ' (bloqueada: '+j.promptFeedback.blockReason+')' : '') + '.');
+    return { texto:txt, modelo };
+  }
+  if(prov === 'claude'){
+    const modelo = IACFG.modelo || PROVS.claude.modelo;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'content-type':'application/json','x-api-key':clave,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({ model:modelo, max_tokens:2000, system:INSTRUCCIONES_IA, messages:[{role:'user',content:usuario}] }) });
+    if(!r.ok) throw new Error(await errorApi(r));
+    const j = await r.json();
+    return { texto:(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('').trim(), modelo };
+  }
+  if(prov === 'openai'){
+    const modelo = IACFG.modelo || PROVS.openai.modelo;
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method:'POST', headers:{'content-type':'application/json','authorization':'Bearer '+clave},
+      body: JSON.stringify({ model:modelo, messages:[{role:'system',content:INSTRUCCIONES_IA},{role:'user',content:usuario}] }) });
+    if(!r.ok) throw new Error(await errorApi(r));
+    const j = await r.json();
+    return { texto:(j.choices?.[0]?.message?.content||'').trim(), modelo };
+  }
+  throw new Error('Elegí una IA en Ajustes.');
+}
+// markdown mínimo: negritas, títulos y viñetas; el resto texto plano
+function md(t){
+  return esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/^#{1,4}\s*(.+)$/gm,'<b>$1</b>').replace(/^\s*[-*]\s+/gm,'• ');
+}
+async function contextoIA(){
+  let ctx = await textoIA(null);
+  const prev = (await todos('consultas')).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,3).reverse();
+  if(prev.length) ctx += `\nCONSULTAS ANTERIORES (para dar continuidad)\n` + prev.map(c=>`- ${c.fecha.slice(0,10)} P: ${c.pregunta}\n  R: ${c.respuesta.slice(0,600).replace(/\s+/g,' ')}`).join('\n') + '\n';
+  return ctx;
+}
+function tarjetaConsulta(c, sesiones){
+  const s = c.sesionId && sesiones[c.sesionId];
+  return `<div class="card consulta" data-cid="${c.id}"><div class="q">${esc(c.pregunta)}</div>
+    <div class="resp">${md(c.respuesta)}</div>
+    <div class="meta">${new Date(c.fecha).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})} · ${esc(c.modelo||c.proveedor||'')}${s?` · sesión ${esc(s.fecha)}`:''}
+      · <a href="#" data-borrarc="${c.id}" style="color:var(--bad)">borrar</a></div></div>`;
+}
+async function vistaIA(sesionPre){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
+  vista = 'ia';
+  const sesionesArr = (await todos('sesiones')).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+  const sesiones = Object.fromEntries(sesionesArr.map(s=>[s.id,s]));
+  const nombresArma = Object.fromEntries((await todos('armas')).map(a=>[a.id,a.nombre]));
+  const hist = (await todos('consultas')).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const conClave = !!IACFG.clave;
+  const sel = sesionPre || (sesionesArr[0] && sesionesArr[0].fecha===hoy() ? sesionesArr[0].id : '');
+  app.innerHTML = `<h2>✦ Consultar a la IA</h2>
+  <div class="card">
     <label for="iaPreg" style="margin-top:0">Tu pregunta</label>
-    <textarea id="iaPreg" placeholder="Ej.: ¿qué carga me agrupó mejor? · Armame la tabla para 250 m · ¿Cuándo recuezo estas vainas?"></textarea>
-    <p class="nota">Se manda junto con tus armas, cargas, sesiones y fundición (sin fotos).</p>
-    <p class="nota" id="iaOff" style="display:none;color:var(--acc)">Sin señal: podés copiar el texto ahora y pegarlo en la IA cuando vuelvas a tener conexión.</p>
-    <div class="iagrid">
-      <button class="btn" data-ia="claude" data-red>Abrir en Claude</button>
-      <button class="btn" data-ia="chatgpt" data-red>Abrir en ChatGPT</button>
-    </div>
-    <div class="acts" style="margin-top:8px"><button class="btn sec" data-ia="copiar">Copiar (otra IA)</button><button class="btn sec" id="iaCerrar">Cerrar</button></div>`;
-  d.showModal();
+    <textarea id="iaPreg" placeholder="Ej.: ¿qué carga me agrupó mejor? · ¿cuántos clicks corrijo? · ¿cuándo recuezo estas vainas?"></textarea>
+    <label for="iaSes">Sesión relacionada (opcional)</label>
+    <select id="iaSes"><option value="">—</option>${sesionesArr.slice(0,40).map(s=>`<option value="${s.id}"${s.id===sel?' selected':''}>${esc(s.fecha)} · ${esc(nombresArma[s.armaId]||'')} ${s.distanciaM?'· '+s.distanciaM+' m':''}</option>`).join('')}</select>
+    ${conClave
+      ? `<div class="acts"><button class="btn full" id="iaPreguntar" data-red>Preguntar a ${esc(PROVS[IACFG.prov].nombre.split(' —')[0])}</button></div>`
+      : `<p class="nota">Para que la IA conteste acá y quede guardado, cargá una clave en <b>Más → Ajustes de IA</b> (Gemini es gratis). Mientras tanto podés abrir la consulta en otra app.</p>`}
+    <div id="iaEstado"></div>
+    <details style="margin-top:12px"><summary class="nota" style="cursor:pointer">Abrir en otra app o pegar una respuesta</summary>
+      <div class="iagrid">
+        <button class="btn sec" data-ia="claude" data-red>Abrir en Claude</button>
+        <button class="btn sec" data-ia="chatgpt" data-red>Abrir en ChatGPT</button>
+      </div>
+      <div class="acts" style="margin-top:8px"><button class="btn sec" data-ia="copiar">Copiar (otra IA)</button></div>
+      <label for="iaPegada">Respuesta que te dio la otra IA (para guardarla)</label>
+      <textarea id="iaPegada" placeholder="Pegá acá la respuesta"></textarea>
+      <div class="acts"><button class="btn sec" id="iaGuardarPegada">Guardar respuesta</button></div>
+    </details>
+  </div>
+  <h2>Historial</h2>
+  <div id="iaHist">${hist.length ? hist.map(c=>tarjetaConsulta(c,sesiones)).join('') : '<div class="vacio">Todavía no hay consultas guardadas.</div>'}</div>`;
   estadoRed();
-  $('#iaOff').style.display = navigator.onLine ? 'none' : '';
-  $('#iaCerrar').onclick = () => d.close();
-  d.querySelectorAll('[data-ia]').forEach(b => b.onclick = async () => {
+  const guardarConsulta = async (pregunta, respuesta, extra) => {
+    const c = Object.assign({ id:nuevoId(), fecha:new Date().toISOString(), pregunta, respuesta, sesionId:$('#iaSes').value||'' }, extra);
+    await guardar('consultas', c); return c;
+  };
+  if($('#iaPreguntar')) $('#iaPreguntar').onclick = async () => {
+    const pregunta = $('#iaPreg').value.trim();
+    if(!pregunta){ toast('Escribí la pregunta'); return; }
+    const b = $('#iaPreguntar'); b.disabled = true;
+    $('#iaEstado').innerHTML = '<div class="cargando">Consultando…</div>';
+    try{
+      const r = await preguntarAPI(pregunta, await contextoIA());
+      const c = await guardarConsulta(pregunta, r.texto, { proveedor:IACFG.prov, modelo:r.modelo, origen:'api' });
+      $('#iaPreg').value = '';
+      $('#iaEstado').innerHTML = '';
+      const vacio = $('#iaHist .vacio'); if(vacio) vacio.remove();
+      $('#iaHist').insertAdjacentHTML('afterbegin', tarjetaConsulta(c, sesiones));
+      enganchar();
+      $('#iaHist').scrollIntoView({behavior:'smooth'});
+    }catch(e){
+      $('#iaEstado').innerHTML = `<p class="nota" style="color:var(--bad)">${esc(e.message||e)}</p>`;
+    }finally{ b.disabled = !navigator.onLine; }
+  };
+  app.querySelectorAll('[data-ia]').forEach(b => b.onclick = async () => {
     const texto = await textoIA($('#iaPreg').value.trim());
     const ok = await copiar(texto);
     const destino = b.dataset.ia;
@@ -669,10 +813,23 @@ function modoIA(){
     const url = DESTINOS[destino] + encodeURIComponent(texto);
     if(url.length < 7000) window.open(url, '_blank');
     else { window.open(DESTINOS[destino].split('?')[0], '_blank'); toast('Datos copiados: pegalos en el chat'); }
-    d.close();
   });
+  $('#iaGuardarPegada').onclick = async () => {
+    const resp = $('#iaPegada').value.trim();
+    if(!resp){ toast('Pegá la respuesta primero'); return; }
+    await guardarConsulta($('#iaPreg').value.trim() || '(consulta hecha en otra app)', resp, { proveedor:'pegada', modelo:'respuesta pegada', origen:'pegada' });
+    toast('Respuesta guardada'); vistaIA($('#iaSes').value);
+  };
+  function enganchar(){
+    app.querySelectorAll('[data-borrarc]').forEach(a => a.onclick = async ev => {
+      ev.preventDefault(); if(!confirm('¿Borrar esta consulta?')) return;
+      await borrar('consultas', a.dataset.borrarc); a.closest('.consulta').remove();
+    });
+  }
+  enganchar();
 }
-$('#btnIA').onclick = modoIA;
+function modoIA(){ vistaIA(); }
+$('#btnIA').onclick = () => vistaIA();
 
 /* ================= Botón Instalar ================= */
 const instalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;

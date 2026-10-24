@@ -10,6 +10,10 @@ App web gratuita y libre para tiradores, cazadores y recargadores. Funciona **si
 - **Fundición:** lotes de puntas fundidas con aleación, peso, dureza y recubrimiento.
 - **Calculadora balística:** modelo de punto-masa con tablas de arrastre G1 y G7, corrección atmosférica, viento y ángulo de tiro. Da caída, corrección en MOA o MRAD, clicks, deriva, velocidad, energía y tiempo de vuelo.
 - **Exportar / importar** en JSON, para hacer copias de seguridad, pasar los datos a otro teléfono o analizarlos con una IA.
+- **Diana interactiva** en cada sesión: marcás los impactos con el dedo y calcula el tamaño del grupo, el impacto medio y los clicks para corregir.
+- **Consultas a la IA** con todos tus datos: Gemini (gratis), Claude o ChatGPT con tu propia clave, o abriendo la consulta en otra app. Las respuestas quedan guardadas en un historial, unidas a la sesión de tiro.
+- **Sin señal** la app cambia de color y sigue funcionando; lo de IA espera a que vuelva la conexión.
+- **Unidades:** velocidades en fps o m/s.
 - **Modo noche** en rojo, para no perder la visión nocturna.
 
 ## Instalar en el celular
@@ -25,6 +29,10 @@ App web gratuita y libre para tiradores, cazadores y recargadores. Funciona **si
 3. En un par de minutos queda en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPO/`.
 
 Cada vez que subas una versión nueva, cambiá `CACHE` en `sw.js` (por ejemplo `mosca-v2`) para que los teléfonos la tomen.
+
+## Sobre la IA
+
+Para que la IA conteste adentro de la app, cada usuario carga su propia clave en **Más → Ajustes de IA**. La de Gemini se saca gratis en [Google AI Studio](https://aistudio.google.com/apikey). La clave queda guardada solo en ese teléfono y la app habla directo con la IA, sin pasar por ningún servidor intermedio.
 
 ## Sobre los datos de recarga
 

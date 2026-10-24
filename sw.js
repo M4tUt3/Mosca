@@ -1,5 +1,5 @@
 // MOSCA — service worker: deja la app disponible sin señal
-const CACHE = 'mosca-v6';
+const CACHE = 'mosca-v7';
 const ARCHIVOS = ['./', './index.html', './balistica.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -11,6 +11,7 @@ self.addEventListener('activate', e => {
 // red primero (para recibir actualizaciones), caché si no hay señal
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== self.location.origin) return;   // las APIs de IA no pasan por la caché
   e.respondWith(
     fetch(e.request).then(r => {
       const copia = r.clone();

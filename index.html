@@ -15,6 +15,8 @@
   --tx:#e8e6d9; --tx2:#a9ab98; --acc:#c9a13b; --acc2:#8fae5a; --bad:#d0614a;
   --r:12px;
 }
+body.offline{ --acc:#5b9bd5; --acc2:#7fb3e0; }
+body.offline header{border-bottom:2px solid var(--acc)}
 body.noche{ --bg:#000; --panel:#120000; --panel2:#1d0000; --line:#3a0a0a; --tx:#ff4a3a; --tx2:#b52a20; --acc:#ff3b2b; --acc2:#d0301f; --bad:#ff7a6a; }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -64,6 +66,16 @@ tr.marca td{color:var(--acc);font-weight:600}
 .fotos img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
 .nota{font-size:13px;color:var(--tx2);margin:8px 0}
 .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--acc);color:#111;padding:9px 16px;border-radius:99px;font-weight:600;z-index:9;display:none}
+.estado{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--acc);border:1px solid var(--acc);border-radius:99px;padding:2px 8px;display:none}
+body.offline .estado{display:inline-block}
+.btnia{background:none;border:1px solid var(--acc);color:var(--acc);border-radius:10px;padding:6px 10px;font-size:14px;font-weight:600}
+.iagrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.btn:disabled{opacity:.4}
+.diana{background:#efe9d8;border-radius:var(--r);border:1px solid var(--line);touch-action:manipulation;display:block;width:100%;max-width:440px;margin:0 auto}
+body.noche .diana{background:#1a0000}
+.gsel{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.gsel button{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:99px;padding:5px 11px;font-size:13px}
+.gsel button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
 .sep{height:1px;background:var(--line);margin:14px 0}
 dialog{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:var(--r);max-width:92vw}
 dialog img{max-width:86vw;max-height:70vh}
@@ -72,6 +84,8 @@ dialog img{max-width:86vw;max-height:70vh}
 <body>
 <header>
   <h1>MOSCA <span class="ver" id="ver"></span><small>Cuaderno de tiro y recarga · by M4tUt3</small></h1>
+  <span class="estado" id="estado">SIN SEÑAL</span>
+  <button class="btnia" id="btnIA" title="Preguntarle a una IA con tus datos">✦ IA</button>
   <button class="btn" id="btnInstalar" style="display:none;padding:7px 12px;font-size:14px">⬇ Instalar</button>
   <button class="iconbtn" id="btnNoche" title="Modo noche (rojo)">◐</button>
 </header>
@@ -89,7 +103,17 @@ dialog img{max-width:86vw;max-height:70vh}
 <script src="balistica.js"></script>
 <script>
 'use strict';
-const VERSION = '1.3';
+const VERSION = '1.5';
+/* ================= Preferencias y unidades ================= */
+const PREF_KEY = 'mosca.prefs';
+let PREFS = { vel:'fps' };
+try{ Object.assign(PREFS, JSON.parse(localStorage.getItem(PREF_KEY)||'{}')); }catch(e){}
+const guardarPrefs = () => { try{ localStorage.setItem(PREF_KEY, JSON.stringify(PREFS)); }catch(e){} };
+const FPS = 3.280839895;
+const UV = () => PREFS.vel==='fps' ? 'fps' : 'm/s';
+const velOut = ms => ms==null ? null : (PREFS.vel==='fps' ? ms*FPS : ms);   // interno (m/s) -> pantalla
+const velIn  = x  => x==null ? null : (PREFS.vel==='fps' ? x/FPS : x);      // pantalla -> interno (m/s)
+const CAMPOS_VEL = ['v0','velocidades'];
 /* ================= Base de datos (IndexedDB) ================= */
 const STORES = ['armas','cargas','sesiones','fundicion','fotos'];
 let dbp;
@@ -142,7 +166,7 @@ const ESQ = {
     ['vainaMarca','Vaina — marca','text'],['vainaLote','Vaina — lote','text'],
     ['vecesRecargada','Veces que se recargó el lote de vainas','number'],
     ['coalMm','COAL (mm)','number'],['cbtoMm','CBTO (mm)','number'],
-    ['v0','Velocidad en boca medida (m/s)','number'],
+    ['v0','Velocidad en boca medida ({VEL})','number'],
     ['notas','Notas','textarea']
   ]},
   fundicion: { titulo:'Fundición', singular:'lote de fundición', campos:[
@@ -161,7 +185,7 @@ const ESQ = {
     ['disparos','Disparos en la sesión','number'],
     ['gruposMm','Grupos (mm centro a centro, separados por coma; decimales con punto)','text'],
     ['tirosPorGrupo','Tiros por grupo','number'],
-    ['velocidades','Velocidades (m/s, separadas por coma; decimales con punto)','text'],
+    ['velocidades','Velocidades ({VEL}, separadas por coma; decimales con punto)','text'],
     ['tempC','Temperatura (°C)','number'],['presionHPa','Presión del lugar (hPa)','number'],
     ['vientoKmh','Viento (km/h)','number'],['vientoDir','Viento — de qué hora viene (1-12)','number'],
     ['correccion','Corrección aplicada (clicks, dirección)','text'],
@@ -178,6 +202,13 @@ const lista = s => String(s||'').split(/[;,\s]+/).map(x=>num(x)).filter(x=>x!=nu
 const f = (n,d=1) => n==null||!isFinite(n) ? '—' : n.toFixed(d);
 function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.display='none',2000); }
 const hoy = () => new Date().toISOString().slice(0,10);
+const etiqueta = lab => lab.replace('{VEL}', UV());
+// convierte un campo de velocidad guardado (m/s) a texto en la unidad elegida
+function velTexto(k, v){
+  if(v==null || v==='') return '';
+  if(k==='v0') return f(velOut(num(v)), PREFS.vel==='fps'?0:1);
+  return lista(v).map(x=>f(velOut(x), PREFS.vel==='fps'?0:1)).join(', ');
+}
 
 function statsSesion(s){
   const v = Balistica.estadisticaVelocidades(lista(s.velocidades));
@@ -219,7 +250,7 @@ async function listado(store){
       const st = statsSesion(it);
       t = (it.fecha||'')+' · '+(armas[it.armaId]?.nombre||'sin arma');
       s = [cargas[it.cargaId]?.nombre, it.distanciaM&&it.distanciaM+' m', it.tipo, it.lugar].filter(Boolean).join(' · ');
-      if(st.grupos||st.vel) extra = `<div class="s">${st.grupos?`grupo prom. ${f(st.grupos.promMoa,2)} MOA (${f(st.grupos.promMm,0)} mm)`:''}${st.grupos&&st.vel?' · ':''}${st.vel?`${f(st.vel.prom,0)} m/s, DE ${f(st.vel.sd,1)}`:''}</div>`;
+      if(st.grupos||st.vel) extra = `<div class="s">${st.grupos?`grupo prom. ${f(st.grupos.promMoa,2)} MOA (${f(st.grupos.promMm,0)} mm)`:''}${st.grupos&&st.vel?' · ':''}${st.vel?`${f(velOut(st.vel.prom),0)} ${UV()}, DE ${f(velOut(st.vel.sd),1)}`:''}</div>`;
     }
     html += `<div class="card click" data-id="${it.id}"><div class="t">${store==='cargas'?t:esc(t)}</div><div class="s">${esc(s)}</div>${extra}</div>`;
   }
@@ -238,8 +269,8 @@ async function formulario(store, id, preset){
   for(const c of e.campos) if(c[2].startsWith('ref:')) refs[c[2].slice(4)] = await todos(c[2].slice(4));
   let html = `<h2>${id?'Editar':'Nueva'} ${e.singular}</h2><form id="frm">`;
   for(const [k,lab,tipo,req,opts] of e.campos){
-    const v = it[k]??'';
-    html += `<label for="f_${k}">${esc(lab)}${req?' *':''}</label>`;
+    const v = CAMPOS_VEL.includes(k) ? velTexto(k, it[k]) : (it[k]??'');
+    html += `<label for="f_${k}">${esc(etiqueta(lab))}${req?' *':''}</label>`;
     if(tipo==='textarea') html += `<textarea id="f_${k}" name="${k}">${esc(v)}</textarea>`;
     else if(tipo==='select') html += `<select id="f_${k}" name="${k}"><option value=""></option>${opts.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select>`;
     else if(tipo.startsWith('ref:')){
@@ -255,6 +286,8 @@ async function formulario(store, id, preset){
     const fd = new FormData(ev.target);
     const obj = Object.assign({}, it, { id: it.id||nuevoId(), creado: it.creado||new Date().toISOString(), modificado:new Date().toISOString() });
     for(const [k,,tipo] of e.campos){ const v = (fd.get(k)||'').toString().trim(); obj[k] = tipo==='number' ? num(v) : v; }
+    if('v0' in obj) obj.v0 = obj.v0==null ? null : velIn(obj.v0);
+    if('velocidades' in obj) obj.velocidades = lista(obj.velocidades).map(x=>+velIn(x).toFixed(3)).join(', ');
     await guardar(store,obj); toast('Guardado'); detalle(store,obj.id);
   };
 }
@@ -271,7 +304,8 @@ async function detalle(store, id){
   for(const [k,lab,tipo] of e.campos){
     let v = it[k]; if(v==null||v==='') continue;
     if(tipo.startsWith('ref:')) v = nombres[v]||'(borrado)';
-    html += `<div style="margin:3px 0"><span class="s">${esc(lab)}:</span> ${esc(v)}</div>`;
+    if(CAMPOS_VEL.includes(k)) v = velTexto(k, v);
+    html += `<div style="margin:3px 0"><span class="s">${esc(etiqueta(lab))}:</span> ${esc(v)}</div>`;
   }
   html += `</div>`;
   if(store==='armas'){
@@ -284,15 +318,16 @@ async function detalle(store, id){
     const vs = ses.flatMap(s=>lista(s.velocidades)); const v = Balistica.estadisticaVelocidades(vs);
     const gm = ses.map(s=>statsSesion(s).grupos).filter(Boolean);
     html += `<div class="stats"><div class="stat"><b>${ses.length}</b><i>sesiones</i></div>
-      <div class="stat"><b>${v?f(v.prom,0):'—'}</b><i>m/s promedio (${v?v.n:0} tiros)</i></div>
-      <div class="stat"><b>${v?f(v.sd,1):'—'}</b><i>desvío estándar</i></div>
+      <div class="stat"><b>${v?f(velOut(v.prom),0):'—'}</b><i>${UV()} promedio (${v?v.n:0} tiros)</i></div>
+      <div class="stat"><b>${v?f(velOut(v.sd),1):'—'}</b><i>desvío estándar</i></div>
       <div class="stat"><b>${gm.length?f(Math.min(...gm.map(g=>g.mejorMoa)),2):'—'}</b><i>mejor grupo (MOA)</i></div></div>`;
-    if(v && !it.v0) html += `<p class="nota">Tenés ${v.n} velocidades medidas: podés usar ${f(v.prom,0)} m/s como velocidad en boca.</p>`;
+    if(v && !it.v0) html += `<p class="nota">Tenés ${v.n} velocidades medidas: podés usar ${f(velOut(v.prom),0)} ${UV()} como velocidad en boca.</p>`;
   }
   if(store==='sesiones'){
     const st = statsSesion(it);
-    if(st.vel) html += `<div class="stats"><div class="stat"><b>${f(st.vel.prom,1)}</b><i>m/s promedio</i></div><div class="stat"><b>${f(st.vel.sd,1)}</b><i>desvío est. (DE)</i></div><div class="stat"><b>${f(st.vel.es,1)}</b><i>disp. extrema (ES)</i></div><div class="stat"><b>${st.vel.n}</b><i>tiros medidos</i></div></div>`;
+    if(st.vel) html += `<div class="stats"><div class="stat"><b>${f(velOut(st.vel.prom),0)}</b><i>${UV()} promedio</i></div><div class="stat"><b>${f(velOut(st.vel.sd),1)}</b><i>desvío est. (DE)</i></div><div class="stat"><b>${f(velOut(st.vel.es),1)}</b><i>disp. extrema (ES)</i></div><div class="stat"><b>${st.vel.n}</b><i>tiros medidos</i></div></div>`;
     if(st.grupos) html += `<div class="stats"><div class="stat"><b>${f(st.grupos.promMoa,2)}</b><i>MOA promedio</i></div><div class="stat"><b>${f(st.grupos.mejorMoa,2)}</b><i>mejor grupo MOA</i></div><div class="stat"><b>${f(st.grupos.promMm,0)}</b><i>mm promedio</i></div><div class="stat"><b>${st.grupos.n}</b><i>grupos</i></div></div>`;
+    html += `<h2>Diana</h2><div id="dianaBox"></div>`;
     const fotos = (await todos('fotos')).filter(p=>p.sesionId===id);
     html += `<h2>Fotos de blancos</h2><div class="fotos">${fotos.map(p=>`<img src="${p.data}" data-id="${p.id}" alt="blanco">`).join('')}</div>
       <label class="btn sec" style="display:inline-block;margin-top:8px;color:var(--tx)">📷 Agregar foto<input type="file" accept="image/*" capture="environment" id="foto" hidden></label>`;
@@ -306,6 +341,7 @@ async function detalle(store, id){
   $('#borrar').onclick = async () => { if(!confirm('¿Borrar definitivamente?')) return; await borrar(store,id); if(store==='sesiones') for(const p of (await todos('fotos')).filter(p=>p.sesionId===id)) await borrar('fotos',p.id); toast('Borrado'); store==='fundicion'?listado('fundicion'):ir(vista); };
   if($('#nuevaSes')) $('#nuevaSes').onclick = () => { vista='sesiones'; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==='sesiones'));
     formulario('sesiones', null, store==='cargas' ? {cargaId:id, armaId:it.armaId||''} : {armaId:it.armaId,cargaId:it.cargaId,lugar:it.lugar,distanciaM:it.distanciaM,tipo:it.tipo,tirosPorGrupo:it.tirosPorGrupo}); };
+  if(store==='sesiones') dianaSesion(it);
   if($('#foto')) $('#foto').onchange = async ev => {
     const file = ev.target.files[0]; if(!file) return;
     const data = await comprimir(file);
@@ -316,6 +352,96 @@ async function detalle(store, id){
     const d=$('#dlg'); d.innerHTML=`<img src="${img.src}"><div class="acts"><button class="btn bad" id="bf">Borrar foto</button><button class="btn" id="cf">Cerrar</button></div>`;
     d.showModal(); $('#cf').onclick=()=>d.close(); $('#bf').onclick=async()=>{ await borrar('fotos',img.dataset.id); d.close(); detalle(store,id); };
   });
+}
+/* ================= Diana: marcar impactos ================= */
+const COLORES_G = ['#c0392b','#2c6fbb','#1e8449','#8e44ad','#d35400','#117a65'];
+function analisisGrupo(pts, distM){
+  if(!pts.length) return null;
+  const mx = pts.reduce((a,p)=>a+p.x,0)/pts.length, my = pts.reduce((a,p)=>a+p.y,0)/pts.length;
+  let es = 0;
+  for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++) es = Math.max(es, Math.hypot(pts[i].x-pts[j].x, pts[i].y-pts[j].y));
+  const r = { n:pts.length, mpiX:mx, mpiY:my, esMm:es*10 };
+  if(distM){
+    const cmPorMoa = distM * Math.tan(Math.PI/10800) * 100;
+    r.esMoa = es / cmPorMoa;
+    r.mpiXMoa = mx / cmPorMoa; r.mpiYMoa = my / cmPorMoa;
+  }
+  return r;
+}
+function analisisDiana(s){
+  const imp = s.impactos || [];
+  const gs = [...new Set(imp.map(p=>p.g))].sort((a,b)=>a-b);
+  const d = num(s.distanciaM);
+  return { grupos: gs.map(g => Object.assign({g}, analisisGrupo(imp.filter(p=>p.g===g), d))), total: analisisGrupo(imp, d) };
+}
+async function dianaSesion(s){
+  const box = $('#dianaBox'); if(!box) return;
+  const arma = s.armaId ? await uno('armas', s.armaId) : null;
+  let S = s.dianaCm || 30;                 // ancho de la diana en cm
+  let g = Math.max(1, ...((s.impactos||[]).map(p=>p.g)), 1);
+  if(!(s.impactos||[]).length) g = 1;
+  async function persistir(){ s.modificado = new Date().toISOString(); await guardar('sesiones', s); }
+  function pintar(){
+    const imp = s.impactos || [];
+    const r = S/2, paso = S/10;
+    let svg = `<svg class="diana" id="dianaSvg" viewBox="${-r} ${-r} ${S} ${S}" xmlns="http://www.w3.org/2000/svg">`;
+    for(let i=5;i>=1;i--) svg += `<circle cx="0" cy="0" r="${i*paso}" fill="${i<=2?'#1c1c1c':'none'}" stroke="${i<=2?'#efe9d8':'#1c1c1c'}" stroke-width="${S/400}"/>`;
+    svg += `<line x1="${-r}" y1="0" x2="${r}" y2="0" stroke="#7a7a7a" stroke-width="${S/600}"/><line x1="0" y1="${-r}" x2="0" y2="${r}" stroke="#7a7a7a" stroke-width="${S/600}"/>`;
+    svg += `<text x="${-r+S/60}" y="${r-S/60}" font-size="${S/28}" fill="#7a7a7a">${S} cm · anillos cada ${f(paso,1)} cm</text>`;
+    const an = analisisDiana(s);
+    for(const gr of an.grupos){
+      if(gr.n>1) svg += `<circle cx="${gr.mpiX}" cy="${-gr.mpiY}" r="${S/90}" fill="none" stroke="${COLORES_G[(gr.g-1)%6]}" stroke-width="${S/300}"/><line x1="${gr.mpiX-S/45}" y1="${-gr.mpiY}" x2="${gr.mpiX+S/45}" y2="${-gr.mpiY}" stroke="${COLORES_G[(gr.g-1)%6]}" stroke-width="${S/400}"/><line x1="${gr.mpiX}" y1="${-gr.mpiY-S/45}" x2="${gr.mpiX}" y2="${-gr.mpiY+S/45}" stroke="${COLORES_G[(gr.g-1)%6]}" stroke-width="${S/400}"/>`;
+    }
+    imp.forEach((p,i) => {
+      const c = COLORES_G[(p.g-1)%6];
+      svg += `<circle cx="${p.x}" cy="${-p.y}" r="${S/70}" fill="${c}" stroke="#fff" stroke-width="${S/500}" opacity="${p.g===g?1:.55}"/>`;
+    });
+    svg += `</svg>`;
+    const gruposExist = [...new Set(imp.map(p=>p.g))]; if(!gruposExist.includes(g)) gruposExist.push(g); gruposExist.sort((a,b)=>a-b);
+    let html = svg + `<div class="gsel">${gruposExist.map(n=>`<button data-g="${n}" class="${n===g?'on':''}" style="border-left:6px solid ${COLORES_G[(n-1)%6]}">Grupo ${n}</button>`).join('')}
+      <button id="gNuevo">+ Grupo</button>
+      <select id="dTam" style="width:auto;padding:5px 8px;font-size:13px">${[10,20,30,50,100].map(v=>`<option value="${v}"${v===S?' selected':''}>${v} cm</option>`).join('')}</select></div>
+      <p class="nota">Tocá la diana para marcar un impacto del grupo elegido. Tocá un impacto para borrarlo. El centro es tu punto de mira.${num(s.distanciaM)?'':' <b>Cargá la distancia de la sesión para ver los MOA y los clicks.</b>'}</p>`;
+    const res = an.grupos.filter(x=>x.n);
+    if(res.length){
+      html += `<div class="stats">`;
+      for(const gr of res){
+        let corr = '';
+        if(gr.mpiXMoa!=null && arma && arma.valorClick){
+          const unidadM = arma.unidadClick==='MRAD';
+          const k = unidadM ? (1/3.43775) : 1;     // MOA -> MRAD
+          const cv = (gr.mpiYMoa*k)/arma.valorClick, ch = (gr.mpiXMoa*k)/arma.valorClick;
+          corr = `<br>corregir: ${f(Math.abs(cv),0)} clicks ${cv>0?'abajo':'arriba'}, ${f(Math.abs(ch),0)} ${ch>0?'izquierda':'derecha'}`;
+        }
+        html += `<div class="stat" style="border-left:4px solid ${COLORES_G[(gr.g-1)%6]}"><b>${gr.esMoa!=null?f(gr.esMoa,2)+' MOA':f(gr.esMm,0)+' mm'}</b>
+          <i>Grupo ${gr.g}: ${gr.n} tiros · ${f(gr.esMm,0)} mm<br>impacto medio: ${f(Math.abs(gr.mpiY),1)} cm ${gr.mpiY>=0?'arriba':'abajo'}, ${f(Math.abs(gr.mpiX),1)} cm ${gr.mpiX>=0?'derecha':'izquierda'}${corr}</i></div>`;
+      }
+      html += `</div><div class="acts"><button class="btn sec" id="dDeshacer">Deshacer último</button><button class="btn sec" id="dPasar">Pasar a "Grupos (mm)"</button></div>`;
+    }
+    box.innerHTML = html;
+    const el = $('#dianaSvg');
+    el.addEventListener('click', async ev => {
+      const pt = el.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+      const q = pt.matrixTransform(el.getScreenCTM().inverse());
+      const x = +q.x.toFixed(2), y = +(-q.y).toFixed(2);
+      s.impactos = s.impactos || [];
+      const cerca = s.impactos.findIndex(p => p.g===g && Math.hypot(p.x-x, p.y-y) < S/45);
+      if(cerca>=0) s.impactos.splice(cerca,1); else s.impactos.push({x, y, g});
+      await persistir(); pintar();
+    });
+    box.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { g = +b.dataset.g; pintar(); });
+    $('#gNuevo').onclick = () => { g = Math.max(0, ...(s.impactos||[]).map(p=>p.g), g) + 1; pintar(); };
+    $('#dTam').onchange = async ev => { S = +ev.target.value; s.dianaCm = S; await persistir(); pintar(); };
+    if($('#dDeshacer')) $('#dDeshacer').onclick = async () => { s.impactos.pop(); await persistir(); pintar(); };
+    if($('#dPasar')) $('#dPasar').onclick = async () => {
+      const gs = analisisDiana(s).grupos.filter(x=>x.n>1);
+      s.gruposMm = gs.map(x=>f(x.esMm,1)).join(', ');
+      s.tirosPorGrupo = gs.length ? Math.round(gs.reduce((a,x)=>a+x.n,0)/gs.length) : s.tirosPorGrupo;
+      if(!num(s.disparos)) s.disparos = (s.impactos||[]).length;
+      await persistir(); toast('Grupos actualizados'); detalle('sesiones', s.id);
+    };
+  }
+  pintar();
 }
 function comprimir(file){
   return new Promise((res,rej)=>{
@@ -332,6 +458,7 @@ const BAL_KEY = 'mosca.balistica';
 async function vistaBalistica(){
   const armas = await todos('armas'), cargas = await todos('cargas');
   let prev = {}; try{ prev = JSON.parse(localStorage.getItem(BAL_KEY)||'{}'); }catch(e){}
+  if(prev.vu && prev.vu!==PREFS.vel) delete prev.v0;
   const v = (k,d='') => esc(prev[k]??d);
   const inp = (k,lab,d='') => `<div><label for="b_${k}">${lab}</label><input id="b_${k}" inputmode="decimal" value="${v(k,d)}"></div>`;
   app.innerHTML = `<h2>Calculadora balística</h2>
@@ -340,7 +467,7 @@ async function vistaBalistica(){
     <div><label for="b_carga">Carga</label><select id="b_carga"><option value="">—</option>${cargas.map(c=>`<option value="${c.id}"${c.id===prev.carga?' selected':''}>${esc(c.nombre)}</option>`).join('')}</select></div>
   </div>
   <p class="nota">Al elegir arma y carga se completan los datos guardados. Podés cambiarlos a mano.</p>
-  <div class="row">${inp('bc','BC')}<div><label for="b_modelo">Modelo</label><select id="b_modelo"><option${prev.modelo!=='G7'?' selected':''}>G1</option><option${prev.modelo==='G7'?' selected':''}>G7</option></select></div>${inp('v0','Vel. en boca (m/s)')}${inp('peso','Punta (grains)')}</div>
+  <div class="row">${inp('bc','BC')}<div><label for="b_modelo">Modelo</label><select id="b_modelo"><option${prev.modelo!=='G7'?' selected':''}>G1</option><option${prev.modelo==='G7'?' selected':''}>G7</option></select></div>${inp('v0','Vel. en boca ('+UV()+')')}${inp('peso','Punta (grains)')}</div>
   <div class="row">${inp('altura','Altura de mira (cm)','4')}${inp('cero','Cero (m)','100')}<div><label for="b_unidad">Torretas</label><select id="b_unidad"><option${prev.unidad!=='MRAD'?' selected':''}>MOA</option><option${prev.unidad==='MRAD'?' selected':''}>MRAD</option></select></div>${inp('click','Valor del click','0.25')}</div>
   <div class="sep"></div>
   <div class="row">${inp('temp','Temperatura (°C)','20')}${inp('presion','Presión del lugar (hPa)','')}${inp('alt','o altitud (m)','80')}${inp('hum','Humedad (%)','60')}</div>
@@ -355,15 +482,15 @@ async function vistaBalistica(){
   $('#b_carga').onchange = async () => { const c = cargas.find(x=>x.id===$('#b_carga').value); if(!c) return;
     set('bc',c.bc); set('peso',c.puntaPesoGr); if(c.modeloBC) $('#b_modelo').value=c.modeloBC;
     let v0 = c.v0; if(!v0){ const vs=(await todos('sesiones')).filter(s=>s.cargaId===c.id).flatMap(s=>lista(s.velocidades)); const st=Balistica.estadisticaVelocidades(vs); if(st) v0=Math.round(st.prom); }
-    set('v0',v0); if(c.armaId && !$('#b_arma').value){ $('#b_arma').value=c.armaId; $('#b_arma').onchange(); } };
+    set('v0', v0 ? Math.round(velOut(v0)) : v0); if(c.armaId && !$('#b_arma').value){ $('#b_arma').value=c.armaId; $('#b_arma').onchange(); } };
   $('#calc').onclick = calcular;
 }
 function calcular(){
   const g = k => num($('#b_'+k).value);
   const datos = {}; for(const k of ['bc','v0','peso','altura','cero','click','temp','presion','alt','hum','viento','dir','ang','max','paso']) datos[k]=$('#b_'+k).value;
-  Object.assign(datos,{arma:$('#b_arma').value,carga:$('#b_carga').value,modelo:$('#b_modelo').value,unidad:$('#b_unidad').value});
+  Object.assign(datos,{vu:PREFS.vel,arma:$('#b_arma').value,carga:$('#b_carga').value,modelo:$('#b_modelo').value,unidad:$('#b_unidad').value});
   try{ localStorage.setItem(BAL_KEY, JSON.stringify(datos)); }catch(e){}
-  const bc=g('bc'), v0=g('v0'), cero=g('cero');
+  const bc=g('bc'), v0=velIn(g('v0')), cero=g('cero');
   if(!bc||!v0||!cero){ $('#res').innerHTML='<p class="nota" style="color:var(--bad)">Faltan BC, velocidad en boca o distancia de cero.</p>'; return; }
   const presion = g('presion') || Balistica.presionPorAltitud(g('alt')||0);
   const unidad = $('#b_unidad').value;
@@ -375,8 +502,8 @@ function calcular(){
   const t = Balistica.tablaDeTiro(p, max, paso).filter(r=>r.dist>0);
   const u = unidad==='MRAD';
   $('#res').innerHTML = `<h2>Tabla — ${f(presion,0)} hPa, ${p.tempC} °C</h2><div class="tabla"><table>
-   <tr><th>m</th><th>caída cm</th><th>${u?'MRAD':'MOA'}</th><th>clicks ↑</th><th>viento cm</th><th>${u?'MRAD':'MOA'}</th><th>clicks ↔</th><th>m/s</th><th>J</th><th>s</th></tr>
-   ${t.map(r=>`<tr class="${Math.abs(r.dist-cero)<0.5?'marca':''}"><td>${r.dist}</td><td>${f(r.caidaCm,1)}</td><td>${f(u?r.mrad:r.moa,u?2:1)}</td><td>${f(r.clicks,0)}</td><td>${f(r.derivaCm,1)}</td><td>${f(u?r.mradViento:r.moaViento,u?2:1)}</td><td>${f(r.clicksViento,0)}</td><td>${f(r.v,0)}</td><td>${r.energiaJ?f(r.energiaJ,0):'—'}</td><td>${f(r.t,2)}</td></tr>`).join('')}
+   <tr><th>m</th><th>caída cm</th><th>${u?'MRAD':'MOA'}</th><th>clicks ↑</th><th>viento cm</th><th>${u?'MRAD':'MOA'}</th><th>clicks ↔</th><th>${UV()}</th><th>${PREFS.vel==='fps'?'ft·lb':'J'}</th><th>s</th></tr>
+   ${t.map(r=>`<tr class="${Math.abs(r.dist-cero)<0.5?'marca':''}"><td>${r.dist}</td><td>${f(r.caidaCm,1)}</td><td>${f(u?r.mrad:r.moa,u?2:1)}</td><td>${f(r.clicks,0)}</td><td>${f(r.derivaCm,1)}</td><td>${f(u?r.mradViento:r.moaViento,u?2:1)}</td><td>${f(r.clicksViento,0)}</td><td>${f(velOut(r.v),0)}</td><td>${r.energiaJ?f(PREFS.vel==='fps'?r.energiaJ*0.737562:r.energiaJ,0):'—'}</td><td>${f(r.t,2)}</td></tr>`).join('')}
   </table></div><p class="nota">Caída negativa = el impacto queda por debajo de la línea de mira. Clicks ↑ positivos = subir. Viento: negativo = el impacto se va a la izquierda; clicks ↔ positivos = corregir a la derecha.</p>`;
 }
 
@@ -385,20 +512,30 @@ async function vistaMas(){
   const cuenta = {}; for(const s of STORES) cuenta[s] = (await todos(s)).length;
   app.innerHTML = `<h2>Fundición</h2>
   <div class="card click" id="irFund"><div class="t">Lotes de puntas fundidas</div><div class="s">${cuenta.fundicion} lotes cargados</div></div>
-  <h2>Datos para el agente</h2>
-  <div class="card"><div class="s">Exportá todo en un archivo JSON para pasárselo a Claude (subilo a tu Google Drive o adjuntalo en el chat) o para hacer una copia de seguridad.</div>
+  <h2>Ajustes</h2>
+  <div class="card"><label for="prefVel" style="margin-top:0">Unidad de velocidad</label>
+   <select id="prefVel"><option value="fps"${PREFS.vel==='fps'?' selected':''}>fps (pies por segundo)</option><option value="ms"${PREFS.vel==='ms'?' selected':''}>m/s (metros por segundo)</option></select>
+   <p class="nota">Se aplica a cargas, sesiones y calculadora. Lo ya cargado se convierte solo.</p></div>
+  <h2>Modo IA</h2>
+  <div class="card"><div class="s">El botón <b>✦ IA</b> de arriba arma tus datos con tu pregunta y los abre en Claude, ChatGPT o la IA que uses. Necesita señal.</div>
+   <div class="acts"><button class="btn" id="abrirIA">✦ Preguntarle a una IA</button></div></div>
+  <h2>Copia de seguridad</h2>
+  <div class="card"><div class="s">Exportá todo en un archivo JSON para guardarlo, pasarlo a otro teléfono o adjuntarlo en un chat con una IA.</div>
    <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="conFotos" style="width:auto"> Incluir fotos de blancos (archivo más pesado)</label>
    <div class="acts"><button class="btn" id="exp">Exportar / compartir</button></div></div>
   <div class="card"><div class="s">Importar un archivo exportado de MOSCA (de otro teléfono o de una copia).</div>
    <div class="acts"><label class="btn sec" style="text-align:center;color:var(--tx)">Importar JSON<input type="file" accept=".json,application/json" id="imp" hidden></label></div></div>
-  <p class="nota">Guardado en este teléfono: ${cuenta.armas} armas · ${cuenta.cargas} cargas · ${cuenta.sesiones} sesiones · ${cuenta.fotos} fotos. Los datos no salen del teléfono salvo que los exportes.</p>
+  <p class="nota">Guardado en este teléfono: ${cuenta.armas} armas · ${cuenta.cargas} cargas · ${cuenta.sesiones} sesiones · ${cuenta.fotos} fotos. Los datos no salen del teléfono salvo que los exportes o los mandes a una IA.</p>
   <p class="nota">MOSCA es software libre. Las cargas que anotes son tuyas: los datos de partida siempre salen de un manual de recarga, nunca de esta app.</p>`;
   $('#irFund').onclick = () => listado('fundicion');
+  $('#prefVel').onchange = ev => { PREFS.vel = ev.target.value; guardarPrefs(); toast('Velocidades en '+UV()); };
+  $('#abrirIA').onclick = modoIA;
   $('#exp').onclick = exportar;
   $('#imp').onchange = importar;
 }
 async function construirExport(conFotos){
   const datos = { app:'MOSCA', formato:1, exportado:new Date().toISOString(),
+    unidad_preferida_usuario: UV(),
     unidades:{ velocidad:'m/s', peso:'grains', distancia:'m', grupos:'mm', altura_mira:'cm', presion:'hPa', temperatura:'°C', coal_cbto:'mm' } };
   for(const s of ['armas','cargas','sesiones','fundicion']) datos[s] = await todos(s);
   // resúmenes precalculados para que el agente no tenga que recalcular
@@ -444,6 +581,98 @@ $('#btnNoche').onclick = () => { const on = document.body.classList.toggle('noch
 $('#ver').textContent = 'v'+VERSION;
 ir('armas');
 if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js');
+
+/* ================= Señal (modo campo) ================= */
+function estadoRed(){
+  const off = !navigator.onLine;
+  document.body.classList.toggle('offline', off);
+  document.querySelectorAll('[data-red]').forEach(b => b.disabled = off);
+}
+window.addEventListener('online', () => { estadoRed(); toast('Con señal otra vez'); });
+window.addEventListener('offline', () => { estadoRed(); toast('Sin señal: modo campo'); });
+estadoRed();
+
+/* ================= Modo IA ================= */
+const CORTO = { nombre:'', marca:'', modelo:'', calibre:'', canoPulg:'caño pulg', paso:'paso', mira:'mira', objetivoMm:'objetivo mm',
+  alturaMiraCm:'altura mira cm', unidadClick:'torretas', valorClick:'click', ceroM:'cero m', disparosPrevios:'disparos previos',
+  estado:'estado', armaId:'arma', puntaMarca:'punta', puntaModelo:'', puntaPesoGr:'gr', bc:'BC', modeloBC:'', fundicionId:'lote fundido',
+  polvora:'pólvora', cargaGr:'carga gr', fuenteDato:'fuente', fulminante:'fulminante', vainaMarca:'vaina', vainaLote:'lote vaina',
+  vecesRecargada:'recargas vaina', coalMm:'COAL mm', cbtoMm:'CBTO mm', v0:'v0', lote:'lote', fecha:'', aleacion:'aleación', molde:'molde',
+  pesoPromGr:'peso prom gr', dispersionGr:'± gr', durezaBHN:'BHN', recubrimiento:'recubrimiento', diametroMm:'diám mm', cantidad:'cantidad',
+  lugar:'lugar', cargaId:'carga', tipo:'tipo', distanciaM:'distancia m', posicion:'posición', disparos:'disparos', gruposMm:'grupos mm',
+  tirosPorGrupo:'tiros/grupo', velocidades:'velocidades', tempC:'°C', presionHPa:'hPa', vientoKmh:'viento km/h', vientoDir:'viento hora',
+  correccion:'corrección', notas:'notas' };
+function lineaIA(store, it, nombres){
+  return ESQ[store].campos.map(([k,,tipo]) => {
+    let v = it[k]; if(v==null || v==='') return null;
+    if(tipo.startsWith('ref:')) v = nombres[v] || '(borrado)';
+    if(CAMPOS_VEL.includes(k)) v = velTexto(k, v) + ' ' + UV();
+    v = String(v).replace(/\s+/g,' ');
+    return CORTO[k] ? `${CORTO[k]}: ${v}` : v;
+  }).filter(Boolean).join(' · ');
+}
+async function textoIA(pregunta){
+  const nombres = {};
+  for(const s of ['armas','cargas','fundicion']) for(const r of await todos(s)) nombres[r.id] = r.nombre || ('Lote '+r.lote);
+  const armas = await todos('armas'), cargas = await todos('cargas'), fund = await todos('fundicion');
+  const ses = (await todos('sesiones')).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+  let t = `Sos un experto en balística, tiro de precisión y recarga. Te paso mi cuaderno de la app MOSCA y una pregunta. Respondé usando mis datos; si falta algo, decilo y decime qué medir. Las cargas de pólvora siempre tienen que salir de un manual del fabricante: no inventes cargas ni pases máximos publicados.\n\n`;
+  t += `PREGUNTA: ${pregunta || '(analizá mis datos y decime qué conviene probar en la próxima sesión)'}\n\n`;
+  t += `DATOS MOSCA (${hoy()}) — velocidades en ${UV()}, grupos en mm y MOA, pesos en grains, distancias en m\n`;
+  t += `\nARMAS\n`;
+  for(const a of armas) t += `- ${lineaIA('armas',a,nombres)} · disparos totales: ${await conteoArma(a)}\n`;
+  t += `\nCARGAS\n`;
+  for(const c of cargas){
+    t += `- ${lineaIA('cargas',c,nombres)}\n`;
+    const sc = ses.filter(s=>s.cargaId===c.id);
+    const v = Balistica.estadisticaVelocidades(sc.flatMap(s=>lista(s.velocidades)));
+    const gr = sc.map(s=>statsSesion(s).grupos).filter(Boolean);
+    if(sc.length) t += `  resultados: ${sc.length} sesiones${v?` · vel prom ${f(velOut(v.prom),0)} ${UV()}, DE ${f(velOut(v.sd),1)}, ES ${f(velOut(v.es),0)} (${v.n} tiros)`:''}${gr.length?` · grupo prom ${f(gr.reduce((a,g)=>a+g.promMoa,0)/gr.length,2)} MOA, mejor ${f(Math.min(...gr.map(g=>g.mejorMoa)),2)} MOA`:''}\n`;
+  }
+  t += `\nSESIONES (más recientes primero)\n`;
+  for(const s of ses.slice(0,30)){
+    const st = statsSesion(s);
+    const di = analisisDiana(s).grupos.filter(x=>x.n);
+    const dtxt = di.length ? ' · diana: ' + di.map(x=>`grupo ${x.g} ${x.n} tiros ${f(x.esMm,0)} mm${x.esMoa!=null?' ('+f(x.esMoa,2)+' MOA)':''}, impacto medio ${f(x.mpiY,1)} cm vertical / ${f(x.mpiX,1)} cm horizontal`).join('; ') : '';
+    t += `- ${lineaIA('sesiones',s,nombres)}${dtxt}${st.grupos?` · grupo prom ${f(st.grupos.promMoa,2)} MOA`:''}${st.vel?` · vel prom ${f(velOut(st.vel.prom),0)} ${UV()} DE ${f(velOut(st.vel.sd),1)}`:''}\n`;
+  }
+  if(ses.length>30) t += `(y ${ses.length-30} sesiones más antiguas)\n`;
+  if(fund.length){ t += `\nFUNDICIÓN\n`; for(const x of fund) t += `- ${lineaIA('fundicion',x,nombres)}\n`; }
+  return t;
+}
+async function copiar(texto){
+  try{ await navigator.clipboard.writeText(texto); return true; }
+  catch(e){ const ta=document.createElement('textarea'); ta.value=texto; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand('copy'); }catch(_){} ta.remove(); return ok; }
+}
+const DESTINOS = { claude:'https://claude.ai/new?q=', chatgpt:'https://chatgpt.com/?q=' };
+function modoIA(){
+  const d = $('#dlg');
+  d.innerHTML = `<h2>✦ Preguntarle a una IA</h2>
+    <label for="iaPreg" style="margin-top:0">Tu pregunta</label>
+    <textarea id="iaPreg" placeholder="Ej.: ¿qué carga me agrupó mejor? · Armame la tabla para 250 m · ¿Cuándo recuezo estas vainas?"></textarea>
+    <p class="nota">Se manda junto con tus armas, cargas, sesiones y fundición (sin fotos).</p>
+    <p class="nota" id="iaOff" style="display:none;color:var(--acc)">Sin señal: podés copiar el texto ahora y pegarlo en la IA cuando vuelvas a tener conexión.</p>
+    <div class="iagrid">
+      <button class="btn" data-ia="claude" data-red>Abrir en Claude</button>
+      <button class="btn" data-ia="chatgpt" data-red>Abrir en ChatGPT</button>
+    </div>
+    <div class="acts" style="margin-top:8px"><button class="btn sec" data-ia="copiar">Copiar (otra IA)</button><button class="btn sec" id="iaCerrar">Cerrar</button></div>`;
+  d.showModal();
+  estadoRed();
+  $('#iaOff').style.display = navigator.onLine ? 'none' : '';
+  $('#iaCerrar').onclick = () => d.close();
+  d.querySelectorAll('[data-ia]').forEach(b => b.onclick = async () => {
+    const texto = await textoIA($('#iaPreg').value.trim());
+    const ok = await copiar(texto);
+    const destino = b.dataset.ia;
+    if(destino === 'copiar'){ toast(ok ? 'Copiado: pegalo en tu IA' : 'No se pudo copiar'); return; }
+    const url = DESTINOS[destino] + encodeURIComponent(texto);
+    if(url.length < 7000) window.open(url, '_blank');
+    else { window.open(DESTINOS[destino].split('?')[0], '_blank'); toast('Datos copiados: pegalos en el chat'); }
+    d.close();
+  });
+}
+$('#btnIA').onclick = modoIA;
 
 /* ================= Botón Instalar ================= */
 const instalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;

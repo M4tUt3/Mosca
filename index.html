@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MOSCA — Cuaderno de tiro</title>
+<meta name="description" content="Cuaderno de tiro y recarga offline: armas, cargas, sesiones, fundición y calculadora balística.">
+<meta name="theme-color" content="#1b1f17">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#14170f; --panel:#1f241a; --panel2:#283020; --line:#3a4430;
+  --tx:#e8e6d9; --tx2:#a9ab98; --acc:#c9a13b; --acc2:#8fae5a; --bad:#d0614a;
+  --r:12px;
+}
+body.noche{ --bg:#000; --panel:#120000; --panel2:#1d0000; --line:#3a0a0a; --tx:#ff4a3a; --tx2:#b52a20; --acc:#ff3b2b; --acc2:#d0301f; --bad:#ff7a6a; }
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;padding:10px 16px}
+header h1{font-size:18px;letter-spacing:.18em;margin:0;flex:1}
+header h1 small{display:block;font-size:11px;letter-spacing:.05em;color:var(--tx2);font-weight:400}
+main{padding:12px 16px 96px;max-width:760px;margin:0 auto}
+nav{position:fixed;bottom:0;left:0;right:0;z-index:5;display:flex;background:var(--panel);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;border:0;color:var(--tx2);padding:9px 2px 8px;font-size:12px}
+nav button span{display:block;font-size:20px;line-height:1.1}
+nav button.on{color:var(--acc)}
+h2{font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);margin:14px 0 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:0 0 10px}
+.card.click{cursor:pointer}
+.card .t{font-weight:600}
+.card .s{color:var(--tx2);font-size:14px}
+.chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--tx2);margin-left:6px}
+.chip.ok{color:var(--acc2);border-color:var(--acc2)} .chip.bad{color:var(--bad);border-color:var(--bad)} .chip.prueba{color:var(--acc);border-color:var(--acc)}
+.btn{background:var(--acc);color:#111;border:0;border-radius:10px;padding:11px 16px;font-weight:600;font-size:15px}
+.btn.sec{background:var(--panel2);color:var(--tx);border:1px solid var(--line)}
+.btn.bad{background:none;color:var(--bad);border:1px solid var(--bad)}
+.btn.full{width:100%}
+.iconbtn{background:none;border:1px solid var(--line);color:var(--tx);border-radius:10px;padding:6px 10px;font-size:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1 1 140px}
+label{display:block;font-size:13px;color:var(--tx2);margin:8px 0 3px}
+input,select,textarea{width:100%;background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit}
+textarea{min-height:70px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--acc);border-color:transparent}
+.acts{display:flex;gap:10px;margin-top:16px}
+.acts>*{flex:1}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-top:8px}
+.stat{background:var(--panel2);border-radius:9px;padding:7px 9px}
+.stat b{display:block;font-size:17px}
+.stat i{font-style:normal;font-size:12px;color:var(--tx2)}
+.tabla{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{background:var(--panel2);color:var(--tx2);font-weight:500;font-size:12px;position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+tr.marca td{color:var(--acc);font-weight:600}
+.vacio{color:var(--tx2);text-align:center;padding:26px 10px}
+.fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.fotos img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.nota{font-size:13px;color:var(--tx2);margin:8px 0}
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--acc);color:#111;padding:9px 16px;border-radius:99px;font-weight:600;z-index:9;display:none}
+.sep{height:1px;background:var(--line);margin:14px 0}
+dialog{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:var(--r);max-width:92vw}
+dialog img{max-width:86vw;max-height:70vh}
+</style>
+</head>
+<body>
+<header>
+  <h1>MOSCA<small>Cuaderno de tiro y recarga</small></h1>
+  <button class="iconbtn" id="btnNoche" title="Modo noche (rojo)">◐</button>
+</header>
+<main id="app"></main>
+<nav id="nav">
+  <button data-v="armas"><span>⌖</span>Armas</button>
+  <button data-v="cargas"><span>⧉</span>Cargas</button>
+  <button data-v="sesiones"><span>◎</span>Tiro</button>
+  <button data-v="balistica"><span>⤵</span>Balística</button>
+  <button data-v="mas"><span>☰</span>Más</button>
+</nav>
+<div class="toast" id="toast"></div>
+<dialog id="dlg"></dialog>
+
+<script src="balistica.js"></script>
+<script>
+'use strict';
+/* ================= Base de datos (IndexedDB) ================= */
+const STORES = ['armas','cargas','sesiones','fundicion','fotos'];
+let dbp;
+function db(){
+  if(!dbp) dbp = new Promise((res,rej)=>{
+    const r = indexedDB.open('mosca',1);
+    r.onupgradeneeded = () => { for(const s of STORES) if(!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s,{keyPath:'id'}); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  return dbp;
+}
+async function tx(store, mode, fn){
+  const d = await db();
+  return new Promise((res,rej)=>{ const t = d.transaction(store,mode); const out = fn(t.objectStore(store)); t.oncomplete=()=>res(out&&out.result!==undefined?out.result:out); t.onerror=()=>rej(t.error); });
+}
+const todos = s => tx(s,'readonly',o=>o.getAll());
+const uno = (s,id) => tx(s,'readonly',o=>o.get(id));
+const guardar = (s,obj) => tx(s,'readwrite',o=>o.put(obj));
+const borrar = (s,id) => tx(s,'readwrite',o=>o.delete(id));
+const nuevoId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+if(navigator.storage && navigator.storage.persist) navigator.storage.persist();
+
+/* ================= Esquemas ================= */
+const ESQ = {
+  armas: { titulo:'Armas', singular:'arma', campos:[
+    ['nombre','Nombre (cómo la llamás)','text',1],
+    ['marca','Marca','text'],['modelo','Modelo','text'],
+    ['calibre','Calibre','text'],
+    ['canoPulg','Largo de caño (pulg)','number'],['paso','Paso de estría (ej. 1:10)','text'],
+    ['mira','Mira (marca y modelo)','text'],['objetivoMm','Objetivo de la mira (mm)','number'],
+    ['alturaMiraCm','Altura de mira sobre el eje del caño (cm)','number'],
+    ['unidadClick','Unidad de las torretas','select',0,['MOA','MRAD']],
+    ['valorClick','Valor de cada click (ej. 0.25 MOA / 0.1 MRAD)','number'],
+    ['ceroM','Distancia de cero (m)','number'],
+    ['disparosPrevios','Disparos hechos antes de usar la app','number'],
+    ['notas','Notas','textarea']
+  ]},
+  cargas: { titulo:'Cargas', singular:'carga', campos:[
+    ['nombre','Nombre de la carga','text',1],
+    ['estado','Estado','select',0,['en prueba','aprobada','descartada','fábrica']],
+    ['calibre','Calibre','text'],
+    ['armaId','Para el arma','ref:armas'],
+    ['puntaMarca','Punta — marca','text'],['puntaModelo','Punta — modelo/tipo','text'],
+    ['puntaPesoGr','Peso de la punta (grains)','number'],
+    ['bc','Coeficiente balístico (BC)','number'],['modeloBC','Modelo del BC','select',0,['G1','G7']],
+    ['fundicionId','Punta fundida — lote','ref:fundicion'],
+    ['polvora','Pólvora','text'],['cargaGr','Carga de pólvora (grains)','number'],
+    ['fuenteDato','De dónde sale la carga (manual, página)','text'],
+    ['fulminante','Fulminante','text'],
+    ['vainaMarca','Vaina — marca','text'],['vainaLote','Vaina — lote','text'],
+    ['vecesRecargada','Veces que se recargó el lote de vainas','number'],
+    ['coalMm','COAL (mm)','number'],['cbtoMm','CBTO (mm)','number'],
+    ['v0','Velocidad en boca medida (m/s)','number'],
+    ['notas','Notas','textarea']
+  ]},
+  fundicion: { titulo:'Fundición', singular:'lote de fundición', campos:[
+    ['lote','Lote','text',1],['fecha','Fecha','date'],
+    ['aleacion','Aleación','text'],['molde','Molde','text'],
+    ['pesoPromGr','Peso promedio (grains)','number'],['dispersionGr','Dispersión de peso (± grains)','number'],
+    ['durezaBHN','Dureza (BHN)','number'],['recubrimiento','Recubrimiento (pintura en polvo, lube…)','text'],
+    ['diametroMm','Diámetro calibrado (mm)','number'],
+    ['cantidad','Cantidad','number'],['notas','Notas','textarea']
+  ]},
+  sesiones: { titulo:'Sesiones de tiro', singular:'sesión', campos:[
+    ['fecha','Fecha','date',1],['lugar','Lugar','text'],
+    ['armaId','Arma','ref:armas'],['cargaId','Carga','ref:cargas'],
+    ['tipo','Tipo','select',0,['desarrollo de carga','verificación de cero','práctica','caza']],
+    ['distanciaM','Distancia (m)','number'],['posicion','Posición / apoyo','text'],
+    ['disparos','Disparos en la sesión','number'],
+    ['gruposMm','Grupos (mm centro a centro, separados por coma; decimales con punto)','text'],
+    ['tirosPorGrupo','Tiros por grupo','number'],
+    ['velocidades','Velocidades (m/s, separadas por coma; decimales con punto)','text'],
+    ['tempC','Temperatura (°C)','number'],['presionHPa','Presión del lugar (hPa)','number'],
+    ['vientoKmh','Viento (km/h)','number'],['vientoDir','Viento — de qué hora viene (1-12)','number'],
+    ['correccion','Corrección aplicada (clicks, dirección)','text'],
+    ['notas','Notas / observaciones','textarea']
+  ]}
+};
+
+/* ================= Utilidades ================= */
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = v => { if(v===''||v==null) return null; const n = parseFloat(String(v).replace(',','.')); return isFinite(n)?n:null; };
+const lista = s => String(s||'').split(/[;,\s]+/).map(x=>num(x)).filter(x=>x!=null);
+const f = (n,d=1) => n==null||!isFinite(n) ? '—' : n.toFixed(d);
+function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.display='none',2000); }
+const hoy = () => new Date().toISOString().slice(0,10);
+
+function statsSesion(s){
+  const v = Balistica.estadisticaVelocidades(lista(s.velocidades));
+  const g = lista(s.gruposMm);
+  const d = num(s.distanciaM);
+  let grupos = null;
+  if(g.length && d){
+    const prom = g.reduce((a,b)=>a+b,0)/g.length;
+    grupos = { n:g.length, promMm:prom, mejorMm:Math.min(...g), promMoa:Balistica.grupoAngular(prom,d).moa, mejorMoa:Balistica.grupoAngular(Math.min(...g),d).moa };
+  }
+  return { vel:v, grupos };
+}
+async function conteoArma(arma){
+  const ses = (await todos('sesiones')).filter(s=>s.armaId===arma.id);
+  return (num(arma.disparosPrevios)||0) + ses.reduce((a,s)=>a+(num(s.disparos)||0),0);
+}
+
+/* ================= Navegación ================= */
+let vista = 'armas';
+function ir(v, ...args){ vista=v; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); window.scrollTo(0,0); VISTAS[v](...args); }
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>ir(b.dataset.v));
+
+/* ================= Listados ================= */
+async function listado(store){
+  const e = ESQ[store];
+  const items = await todos(store);
+  const armas = Object.fromEntries((await todos('armas')).map(a=>[a.id,a]));
+  const cargas = Object.fromEntries((await todos('cargas')).map(c=>[c.id,c]));
+  items.sort((a,b)=> String(b.fecha||b.creado||'').localeCompare(String(a.fecha||a.creado||'')));
+  let html = `<div class="row" style="align-items:center"><h2 style="flex:3">${e.titulo}</h2><button class="btn" style="flex:0 0 auto" id="nuevo">+ Nueva</button></div>`;
+  if(store==='fundicion') html = `<button class="btn sec" id="volver" style="margin-top:6px">← Volver</button>` + html;
+  if(!items.length) html += `<div class="vacio">Todavía no hay ${e.titulo.toLowerCase()} cargadas.</div>`;
+  for(const it of items){
+    let t='', s='', extra='';
+    if(store==='armas'){ t=it.nombre; s=[it.marca,it.modelo,it.calibre].filter(Boolean).join(' · '); extra=`<div class="s">${await conteoArma(it)} disparos · cero ${esc(it.ceroM||'—')} m</div>`; }
+    if(store==='cargas'){ t=it.nombre; const cls={aprobada:'ok',descartada:'bad','en prueba':'prueba'}[it.estado]||''; t=esc(t)+(it.estado?`<span class="chip ${cls}">${esc(it.estado)}</span>`:''); s=[it.puntaPesoGr&&it.puntaPesoGr+' gr',it.puntaMarca,it.puntaModelo,it.polvora&&(it.polvora+(it.cargaGr?' '+it.cargaGr+' gr':''))].filter(Boolean).join(' · '); }
+    if(store==='fundicion'){ t='Lote '+(it.lote||''); s=[it.fecha,it.aleacion,it.pesoPromGr&&it.pesoPromGr+' gr',it.durezaBHN&&it.durezaBHN+' BHN'].filter(Boolean).join(' · '); }
+    if(store==='sesiones'){
+      const st = statsSesion(it);
+      t = (it.fecha||'')+' · '+(armas[it.armaId]?.nombre||'sin arma');
+      s = [cargas[it.cargaId]?.nombre, it.distanciaM&&it.distanciaM+' m', it.tipo, it.lugar].filter(Boolean).join(' · ');
+      if(st.grupos||st.vel) extra = `<div class="s">${st.grupos?`grupo prom. ${f(st.grupos.promMoa,2)} MOA (${f(st.grupos.promMm,0)} mm)`:''}${st.grupos&&st.vel?' · ':''}${st.vel?`${f(st.vel.prom,0)} m/s, DE ${f(st.vel.sd,1)}`:''}</div>`;
+    }
+    html += `<div class="card click" data-id="${it.id}"><div class="t">${store==='cargas'?t:esc(t)}</div><div class="s">${esc(s)}</div>${extra}</div>`;
+  }
+  app.innerHTML = html;
+  $('#nuevo').onclick = () => formulario(store);
+  if($('#volver')) $('#volver').onclick = () => ir('mas');
+  app.querySelectorAll('.card.click').forEach(c=>c.onclick=()=>detalle(store,c.dataset.id));
+}
+
+/* ================= Formulario genérico ================= */
+async function formulario(store, id, preset){
+  const e = ESQ[store];
+  const it = id ? await uno(store,id) : Object.assign({}, preset||{});
+  if(!id && store==='sesiones' && !it.fecha) it.fecha = hoy();
+  const refs = {};
+  for(const c of e.campos) if(c[2].startsWith('ref:')) refs[c[2].slice(4)] = await todos(c[2].slice(4));
+  let html = `<h2>${id?'Editar':'Nueva'} ${e.singular}</h2><form id="frm">`;
+  for(const [k,lab,tipo,req,opts] of e.campos){
+    const v = it[k]??'';
+    html += `<label for="f_${k}">${esc(lab)}${req?' *':''}</label>`;
+    if(tipo==='textarea') html += `<textarea id="f_${k}" name="${k}">${esc(v)}</textarea>`;
+    else if(tipo==='select') html += `<select id="f_${k}" name="${k}"><option value=""></option>${opts.map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select>`;
+    else if(tipo.startsWith('ref:')){
+      const rs = refs[tipo.slice(4)];
+      html += `<select id="f_${k}" name="${k}"><option value="">—</option>${rs.map(r=>`<option value="${r.id}"${r.id===v?' selected':''}>${esc(r.nombre||('Lote '+r.lote))}</option>`).join('')}</select>`;
+    } else html += `<input id="f_${k}" name="${k}" type="${tipo==='number'?'text':tipo}" ${tipo==='number'?'inputmode="decimal"':''} value="${esc(v)}" ${req?'required':''}>`;
+  }
+  html += `<div class="acts"><button type="button" class="btn sec" id="cancelar">Cancelar</button><button class="btn">Guardar</button></div></form>`;
+  app.innerHTML = html;
+  $('#cancelar').onclick = () => id ? detalle(store,id) : ir(vista);
+  $('#frm').onsubmit = async ev => {
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
+    const obj = Object.assign({}, it, { id: it.id||nuevoId(), creado: it.creado||new Date().toISOString(), modificado:new Date().toISOString() });
+    for(const [k,,tipo] of e.campos){ const v = (fd.get(k)||'').toString().trim(); obj[k] = tipo==='number' ? num(v) : v; }
+    await guardar(store,obj); toast('Guardado'); detalle(store,obj.id);
+  };
+}
+
+/* ================= Detalle ================= */
+async function detalle(store, id){
+  const e = ESQ[store];
+  const it = await uno(store,id);
+  if(!it){ ir(vista); return; }
+  const nombres = {};
+  for(const s of ['armas','cargas','fundicion']) for(const r of await todos(s)) nombres[r.id] = r.nombre || ('Lote '+r.lote);
+  let html = `<button class="btn sec" id="volver" style="margin-top:6px">← Volver</button>`;
+  html += `<h2>${esc(it.nombre || (it.lote&&'Lote '+it.lote) || it.fecha || e.singular)}</h2><div class="card">`;
+  for(const [k,lab,tipo] of e.campos){
+    let v = it[k]; if(v==null||v==='') continue;
+    if(tipo.startsWith('ref:')) v = nombres[v]||'(borrado)';
+    html += `<div style="margin:3px 0"><span class="s">${esc(lab)}:</span> ${esc(v)}</div>`;
+  }
+  html += `</div>`;
+  if(store==='armas'){
+    const n = await conteoArma(it);
+    const ses = (await todos('sesiones')).filter(s=>s.armaId===id);
+    html += `<div class="stats"><div class="stat"><b>${n}</b><i>disparos</i></div><div class="stat"><b>${ses.length}</b><i>sesiones</i></div></div>`;
+  }
+  if(store==='cargas'){
+    const ses = (await todos('sesiones')).filter(s=>s.cargaId===id);
+    const vs = ses.flatMap(s=>lista(s.velocidades)); const v = Balistica.estadisticaVelocidades(vs);
+    const gm = ses.map(s=>statsSesion(s).grupos).filter(Boolean);
+    html += `<div class="stats"><div class="stat"><b>${ses.length}</b><i>sesiones</i></div>
+      <div class="stat"><b>${v?f(v.prom,0):'—'}</b><i>m/s promedio (${v?v.n:0} tiros)</i></div>
+      <div class="stat"><b>${v?f(v.sd,1):'—'}</b><i>desvío estándar</i></div>
+      <div class="stat"><b>${gm.length?f(Math.min(...gm.map(g=>g.mejorMoa)),2):'—'}</b><i>mejor grupo (MOA)</i></div></div>`;
+    if(v && !it.v0) html += `<p class="nota">Tenés ${v.n} velocidades medidas: podés usar ${f(v.prom,0)} m/s como velocidad en boca.</p>`;
+  }
+  if(store==='sesiones'){
+    const st = statsSesion(it);
+    if(st.vel) html += `<div class="stats"><div class="stat"><b>${f(st.vel.prom,1)}</b><i>m/s promedio</i></div><div class="stat"><b>${f(st.vel.sd,1)}</b><i>desvío est. (DE)</i></div><div class="stat"><b>${f(st.vel.es,1)}</b><i>disp. extrema (ES)</i></div><div class="stat"><b>${st.vel.n}</b><i>tiros medidos</i></div></div>`;
+    if(st.grupos) html += `<div class="stats"><div class="stat"><b>${f(st.grupos.promMoa,2)}</b><i>MOA promedio</i></div><div class="stat"><b>${f(st.grupos.mejorMoa,2)}</b><i>mejor grupo MOA</i></div><div class="stat"><b>${f(st.grupos.promMm,0)}</b><i>mm promedio</i></div><div class="stat"><b>${st.grupos.n}</b><i>grupos</i></div></div>`;
+    const fotos = (await todos('fotos')).filter(p=>p.sesionId===id);
+    html += `<h2>Fotos de blancos</h2><div class="fotos">${fotos.map(p=>`<img src="${p.data}" data-id="${p.id}" alt="blanco">`).join('')}</div>
+      <label class="btn sec" style="display:inline-block;margin-top:8px;color:var(--tx)">📷 Agregar foto<input type="file" accept="image/*" capture="environment" id="foto" hidden></label>`;
+  }
+  html += `<div class="acts"><button class="btn bad" id="borrar">Borrar</button><button class="btn sec" id="duplicar">Duplicar</button><button class="btn" id="editar">Editar</button></div>`;
+  if(store==='sesiones' || store==='cargas') html += `<div class="acts"><button class="btn sec full" id="nuevaSes">${store==='cargas'?'+ Sesión con esta carga':'+ Otra sesión igual (hoy)'}</button></div>`;
+  app.innerHTML = html;
+  $('#volver').onclick = () => store==='fundicion' ? listado('fundicion') : ir(vista);
+  $('#editar').onclick = () => formulario(store,id);
+  $('#duplicar').onclick = async () => { const c = Object.assign({}, it, {id:nuevoId(), creado:new Date().toISOString()}); if(c.nombre) c.nombre += ' (copia)'; if(store==='sesiones') c.fecha=hoy(); await guardar(store,c); formulario(store,c.id); };
+  $('#borrar').onclick = async () => { if(!confirm('¿Borrar definitivamente?')) return; await borrar(store,id); if(store==='sesiones') for(const p of (await todos('fotos')).filter(p=>p.sesionId===id)) await borrar('fotos',p.id); toast('Borrado'); store==='fundicion'?listado('fundicion'):ir(vista); };
+  if($('#nuevaSes')) $('#nuevaSes').onclick = () => { vista='sesiones'; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==='sesiones'));
+    formulario('sesiones', null, store==='cargas' ? {cargaId:id, armaId:it.armaId||''} : {armaId:it.armaId,cargaId:it.cargaId,lugar:it.lugar,distanciaM:it.distanciaM,tipo:it.tipo,tirosPorGrupo:it.tirosPorGrupo}); };
+  if($('#foto')) $('#foto').onchange = async ev => {
+    const file = ev.target.files[0]; if(!file) return;
+    const data = await comprimir(file);
+    await guardar('fotos',{id:nuevoId(), sesionId:id, data, fecha:new Date().toISOString()});
+    detalle(store,id);
+  };
+  app.querySelectorAll('.fotos img').forEach(img=>img.onclick=()=>{
+    const d=$('#dlg'); d.innerHTML=`<img src="${img.src}"><div class="acts"><button class="btn bad" id="bf">Borrar foto</button><button class="btn" id="cf">Cerrar</button></div>`;
+    d.showModal(); $('#cf').onclick=()=>d.close(); $('#bf').onclick=async()=>{ await borrar('fotos',img.dataset.id); d.close(); detalle(store,id); };
+  });
+}
+function comprimir(file){
+  return new Promise((res,rej)=>{
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => { const m = 1280, s = Math.min(1, m/Math.max(img.width,img.height));
+      const c = document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg',0.8)); };
+    img.onerror = rej; img.src = url;
+  });
+}
+
+/* ================= Balística ================= */
+const BAL_KEY = 'mosca.balistica';
+async function vistaBalistica(){
+  const armas = await todos('armas'), cargas = await todos('cargas');
+  let prev = {}; try{ prev = JSON.parse(localStorage.getItem(BAL_KEY)||'{}'); }catch(e){}
+  const v = (k,d='') => esc(prev[k]??d);
+  const inp = (k,lab,d='') => `<div><label for="b_${k}">${lab}</label><input id="b_${k}" inputmode="decimal" value="${v(k,d)}"></div>`;
+  app.innerHTML = `<h2>Calculadora balística</h2>
+  <div class="row">
+    <div><label for="b_arma">Arma</label><select id="b_arma"><option value="">—</option>${armas.map(a=>`<option value="${a.id}"${a.id===prev.arma?' selected':''}>${esc(a.nombre)}</option>`).join('')}</select></div>
+    <div><label for="b_carga">Carga</label><select id="b_carga"><option value="">—</option>${cargas.map(c=>`<option value="${c.id}"${c.id===prev.carga?' selected':''}>${esc(c.nombre)}</option>`).join('')}</select></div>
+  </div>
+  <p class="nota">Al elegir arma y carga se completan los datos guardados. Podés cambiarlos a mano.</p>
+  <div class="row">${inp('bc','BC')}<div><label for="b_modelo">Modelo</label><select id="b_modelo"><option${prev.modelo!=='G7'?' selected':''}>G1</option><option${prev.modelo==='G7'?' selected':''}>G7</option></select></div>${inp('v0','Vel. en boca (m/s)')}${inp('peso','Punta (grains)')}</div>
+  <div class="row">${inp('altura','Altura de mira (cm)','4')}${inp('cero','Cero (m)','100')}<div><label for="b_unidad">Torretas</label><select id="b_unidad"><option${prev.unidad!=='MRAD'?' selected':''}>MOA</option><option${prev.unidad==='MRAD'?' selected':''}>MRAD</option></select></div>${inp('click','Valor del click','0.25')}</div>
+  <div class="sep"></div>
+  <div class="row">${inp('temp','Temperatura (°C)','20')}${inp('presion','Presión del lugar (hPa)','')}${inp('alt','o altitud (m)','80')}${inp('hum','Humedad (%)','60')}</div>
+  <div class="row">${inp('viento','Viento (km/h)','10')}${inp('dir','De qué hora viene (1-12)','3')}${inp('ang','Ángulo de tiro (°, ±)','0')}</div>
+  <div class="row">${inp('max','Hasta (m)','500')}${inp('paso','Cada (m)','25')}</div>
+  <div class="acts"><button class="btn full" id="calc">Calcular tabla</button></div>
+  <div id="res"></div>
+  <p class="nota">Modelo de punto-masa con tablas de arrastre G1/G7. No incluye deriva por giro ni Coriolis (irrelevantes en distancias de caza). Si no cargás la presión del lugar, se estima por altitud. Confirmá siempre los datos en el polígono antes de usarlos sobre un animal.</p>`;
+  const set = (k,val) => { if(val!=null && val!=='') $('#b_'+k).value = val; };
+  $('#b_arma').onchange = () => { const a = armas.find(x=>x.id===$('#b_arma').value); if(!a) return;
+    set('altura',a.alturaMiraCm); set('cero',a.ceroM); set('click',a.valorClick); if(a.unidadClick) $('#b_unidad').value=a.unidadClick; };
+  $('#b_carga').onchange = async () => { const c = cargas.find(x=>x.id===$('#b_carga').value); if(!c) return;
+    set('bc',c.bc); set('peso',c.puntaPesoGr); if(c.modeloBC) $('#b_modelo').value=c.modeloBC;
+    let v0 = c.v0; if(!v0){ const vs=(await todos('sesiones')).filter(s=>s.cargaId===c.id).flatMap(s=>lista(s.velocidades)); const st=Balistica.estadisticaVelocidades(vs); if(st) v0=Math.round(st.prom); }
+    set('v0',v0); if(c.armaId && !$('#b_arma').value){ $('#b_arma').value=c.armaId; $('#b_arma').onchange(); } };
+  $('#calc').onclick = calcular;
+}
+function calcular(){
+  const g = k => num($('#b_'+k).value);
+  const datos = {}; for(const k of ['bc','v0','peso','altura','cero','click','temp','presion','alt','hum','viento','dir','ang','max','paso']) datos[k]=$('#b_'+k).value;
+  Object.assign(datos,{arma:$('#b_arma').value,carga:$('#b_carga').value,modelo:$('#b_modelo').value,unidad:$('#b_unidad').value});
+  try{ localStorage.setItem(BAL_KEY, JSON.stringify(datos)); }catch(e){}
+  const bc=g('bc'), v0=g('v0'), cero=g('cero');
+  if(!bc||!v0||!cero){ $('#res').innerHTML='<p class="nota" style="color:var(--bad)">Faltan BC, velocidad en boca o distancia de cero.</p>'; return; }
+  const presion = g('presion') || Balistica.presionPorAltitud(g('alt')||0);
+  const unidad = $('#b_unidad').value;
+  const p = { bc, modelo:$('#b_modelo').value, v0, masaGr:g('peso'), alturaMira:g('altura')||4, ceroM:cero,
+    tempC:g('temp')??15, presionHPa:presion, humedad:g('hum')??50,
+    vientoMs:(g('viento')||0)/3.6, vientoDirReloj:g('dir')||3, anguloTiroGrados:g('ang')||0,
+    unidadClick:unidad, valorClick:g('click') };
+  const max = Math.min(g('max')||500, 2000), paso = Math.max(g('paso')||25, 5);
+  const t = Balistica.tablaDeTiro(p, max, paso).filter(r=>r.dist>0);
+  const u = unidad==='MRAD';
+  $('#res').innerHTML = `<h2>Tabla — ${f(presion,0)} hPa, ${p.tempC} °C</h2><div class="tabla"><table>
+   <tr><th>m</th><th>caída cm</th><th>${u?'MRAD':'MOA'}</th><th>clicks ↑</th><th>viento cm</th><th>${u?'MRAD':'MOA'}</th><th>clicks ↔</th><th>m/s</th><th>J</th><th>s</th></tr>
+   ${t.map(r=>`<tr class="${Math.abs(r.dist-cero)<0.5?'marca':''}"><td>${r.dist}</td><td>${f(r.caidaCm,1)}</td><td>${f(u?r.mrad:r.moa,u?2:1)}</td><td>${f(r.clicks,0)}</td><td>${f(r.derivaCm,1)}</td><td>${f(u?r.mradViento:r.moaViento,u?2:1)}</td><td>${f(r.clicksViento,0)}</td><td>${f(r.v,0)}</td><td>${r.energiaJ?f(r.energiaJ,0):'—'}</td><td>${f(r.t,2)}</td></tr>`).join('')}
+  </table></div><p class="nota">Caída negativa = el impacto queda por debajo de la línea de mira. Clicks ↑ positivos = subir. Viento: negativo = el impacto se va a la izquierda; clicks ↔ positivos = corregir a la derecha.</p>`;
+}
+
+/* ================= Más: fundición, exportar, importar ================= */
+async function vistaMas(){
+  const cuenta = {}; for(const s of STORES) cuenta[s] = (await todos(s)).length;
+  app.innerHTML = `<h2>Fundición</h2>
+  <div class="card click" id="irFund"><div class="t">Lotes de puntas fundidas</div><div class="s">${cuenta.fundicion} lotes cargados</div></div>
+  <h2>Datos para el agente</h2>
+  <div class="card"><div class="s">Exportá todo en un archivo JSON para pasárselo a Claude (subilo a tu Google Drive o adjuntalo en el chat) o para hacer una copia de seguridad.</div>
+   <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="conFotos" style="width:auto"> Incluir fotos de blancos (archivo más pesado)</label>
+   <div class="acts"><button class="btn" id="exp">Exportar / compartir</button></div></div>
+  <div class="card"><div class="s">Importar un archivo exportado de MOSCA (de otro teléfono o de una copia).</div>
+   <div class="acts"><label class="btn sec" style="text-align:center;color:var(--tx)">Importar JSON<input type="file" accept=".json,application/json" id="imp" hidden></label></div></div>
+  <p class="nota">Guardado en este teléfono: ${cuenta.armas} armas · ${cuenta.cargas} cargas · ${cuenta.sesiones} sesiones · ${cuenta.fotos} fotos. Los datos no salen del teléfono salvo que los exportes.</p>
+  <p class="nota">MOSCA es software libre. Las cargas que anotes son tuyas: los datos de partida siempre salen de un manual de recarga, nunca de esta app.</p>`;
+  $('#irFund').onclick = () => listado('fundicion');
+  $('#exp').onclick = exportar;
+  $('#imp').onchange = importar;
+}
+async function construirExport(conFotos){
+  const datos = { app:'MOSCA', formato:1, exportado:new Date().toISOString(),
+    unidades:{ velocidad:'m/s', peso:'grains', distancia:'m', grupos:'mm', altura_mira:'cm', presion:'hPa', temperatura:'°C', coal_cbto:'mm' } };
+  for(const s of ['armas','cargas','sesiones','fundicion']) datos[s] = await todos(s);
+  // resúmenes precalculados para que el agente no tenga que recalcular
+  datos.resumen = { armas:[], cargas:[], sesiones:[] };
+  for(const a of datos.armas) datos.resumen.armas.push({ id:a.id, nombre:a.nombre, disparos_totales: await conteoArma(a) });
+  for(const c of datos.cargas){
+    const ses = datos.sesiones.filter(s=>s.cargaId===c.id);
+    const v = Balistica.estadisticaVelocidades(ses.flatMap(s=>lista(s.velocidades)));
+    const gr = ses.map(s=>statsSesion(s).grupos).filter(Boolean);
+    datos.resumen.cargas.push({ id:c.id, nombre:c.nombre, sesiones:ses.length, velocidad:v, mejor_grupo_moa: gr.length?Math.min(...gr.map(g=>g.mejorMoa)):null, grupo_promedio_moa: gr.length?gr.reduce((a,g)=>a+g.promMoa,0)/gr.length:null });
+  }
+  for(const s of datos.sesiones) datos.resumen.sesiones.push(Object.assign({ id:s.id, fecha:s.fecha }, statsSesion(s)));
+  if(conFotos) datos.fotos = await todos('fotos');
+  return datos;
+}
+async function exportar(){
+  const datos = await construirExport($('#conFotos').checked);
+  const nombre = `mosca-${hoy()}.json`;
+  const blob = new Blob([JSON.stringify(datos,null,1)],{type:'application/json'});
+  const file = new File([blob], nombre, {type:'application/json'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:'MOSCA — datos de tiro'}); return; }catch(e){ if(e.name==='AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000); toast('Archivo descargado');
+}
+async function importar(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  let d; try{ d = JSON.parse(await file.text()); }catch(e){ alert('El archivo no es un JSON válido.'); return; }
+  if(d.app!=='MOSCA'){ alert('Ese archivo no es de MOSCA.'); return; }
+  const reemplazar = confirm('¿Reemplazar todo lo que hay en este teléfono?\n\nAceptar = reemplazar\nCancelar = sumar a lo existente (los registros con el mismo id se actualizan)');
+  for(const s of STORES){
+    if(reemplazar){ for(const it of await todos(s)) await borrar(s,it.id); }
+    for(const it of (d[s]||[])) if(it && it.id) await guardar(s,it);
+  }
+  toast('Importado'); vistaMas();
+}
+
+/* ================= Arranque ================= */
+const VISTAS = { armas:()=>listado('armas'), cargas:()=>listado('cargas'), sesiones:()=>listado('sesiones'), balistica:vistaBalistica, mas:vistaMas };
+try{ if(localStorage.getItem('mosca.noche')==='1') document.body.classList.add('noche'); }catch(e){}
+$('#btnNoche').onclick = () => { const on = document.body.classList.toggle('noche'); try{ localStorage.setItem('mosca.noche', on?'1':'0'); }catch(e){} };
+ir('armas');
+if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
